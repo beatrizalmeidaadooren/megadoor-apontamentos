@@ -42,6 +42,19 @@
   </form>
 </div>
 
+<div id="senha" hidden>
+  <div id="login" style="margin:80px auto">
+  <h1>Defina sua senha</h1>
+  <p class="muted">Escolha uma senha para entrar no sistema.</p>
+  <form id="formSenha">
+    <label>Nova senha (mínimo 8 caracteres)</label><input id="senhaNova" type="password" minlength="8" required autocomplete="new-password">
+    <label>Repita a senha</label><input id="senhaNova2" type="password" minlength="8" required autocomplete="new-password">
+    <button class="btn primario" type="submit">Salvar senha</button>
+    <div id="erroSenha" class="erro"></div>
+  </form>
+  </div>
+</div>
+
 <div id="app" hidden>
   <header>
     <div><h1>Apontamentos Megadoor</h1><div class="muted" id="quem"></div></div>
@@ -71,6 +84,7 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkb2hxaWt1YW94bGhqd2V4bHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxOTEzMzUsImV4cCI6MjEwODc2NzMzNX0.TNJ7zQwTDi1XddJ6MHQ7qA1WzTHfbR26RpIQqnAnbyM';
   const DONA = 'beatriz.almeida@adooren.com';
   const LIMITE = 170;
+  const TIPO_LINK = new URLSearchParams(location.hash.slice(1)).get('type');
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   const $ = (id) => document.getElementById(id);
@@ -88,6 +102,7 @@
   function mostrar(qual) {
     $('login').hidden = qual !== 'login';
     $('app').hidden = qual !== 'app';
+    $('senha').hidden = qual !== 'senha';
   }
 
   function operNorm(texto) {
@@ -280,7 +295,18 @@
   $('abaParadas').addEventListener('click', () => trocarAba('paradas'));
   $('abaPareto').addEventListener('click', () => trocarAba('pareto'));
 
+  $('formSenha').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if ($('senhaNova').value !== $('senhaNova2').value) { $('erroSenha').textContent = 'As senhas não conferem.'; return; }
+    const {error} = await sb.auth.updateUser({password: $('senhaNova').value});
+    if (error) { $('erroSenha').textContent = 'Não foi possível salvar: ' + error.message; return; }
+    history.replaceState(null, '', location.pathname);
+    const {data} = await sb.auth.getSession();
+    if (data.session) entrar(data.session); else mostrar('login');
+  });
+
   sb.auth.getSession().then(({data}) => {
+    if (data.session && (TIPO_LINK === 'recovery' || TIPO_LINK === 'invite')) { S.user = data.session.user; mostrar('senha'); return; }
     if (data.session) entrar(data.session); else mostrar('login');
   });
 })();
