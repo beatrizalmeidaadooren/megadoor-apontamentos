@@ -116,6 +116,7 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     <label>Repita a senha<input id="senhaNova2" type="password" minlength="8" required autocomplete="new-password"></label>
     <button class="btn primary" type="submit">Salvar senha</button>
     <div id="erroSenha" class="erro"></div>
+    <button class="btn" type="button" id="cancelarSenha" hidden>Voltar sem trocar</button>
   </form>
 </div>
 
@@ -129,6 +130,7 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     <div class="acoes">
       <span class="muted" id="backupMsg"></span>
       <button class="btn" id="btnBackup" type="button" title="Baixa um Excel com todos os dados do sistema">Baixar backup (Excel)</button>
+      <button class="btn" id="btnTrocarSenha" type="button">Trocar senha</button>
       <button class="btn" id="sair" type="button">Sair</button>
     </div>
   </header>
@@ -140,6 +142,7 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
   </nav>
   <main>
     <div id="msg" class="erro"></div>
+    <div id="avisoDados" class="aviso" hidden></div>
     <div id="avisoTabelas" class="aviso" hidden>As tabelas de classificação (programadas e subgrupos) ainda estão vazias no sistema. Rode o <b>sincronizar_megadoor.py</b> uma vez no seu computador para carregá-las.</div>
 
     <!-- APONTAMENTOS -->
@@ -194,10 +197,11 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
   </main>
 </div>
 <div id="salvoMsg"></div>
+<div class="muted" style="text-align:center;padding:10px">versão <span id="versao"></span></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js"></script>
+<script src="comum.js?v=2026-10-29b"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -266,6 +270,20 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     S.programadas = prog.data || [];
     S.legado = {}; (leg.data || []).forEach(x => S.legado[x.antigo] = x.novo);
     $('avisoTabelas').hidden = S.programadas.length > 0 && S.subgrupos.length > 0;
+    // Confere a saúde dos dados do coletor: registros sem data e data do último registro.
+    const [semDia, ultimo] = await Promise.all([
+      sb.from('coletor').select('nreg', {count: 'exact', head: true}).is('dia', null),
+      sb.from('coletor').select('data_hora').not('data_hora', 'is', null).order('data_hora', {ascending: false}).limit(1)
+    ]);
+    const av = [];
+    if (semDia.count) av.push(`${nf(semDia.count)} registros do coletor estão sem data no sistema. Rode o <b>sincronizar_agora.bat</b> no seu computador para corrigir.`);
+    const ult = ultimo.data && ultimo.data[0] && ultimo.data[0].data_hora;
+    if (ult) {
+      const horas = (Date.now() - new Date(ult.replace(' ', 'T')).getTime()) / 3600000;
+      if (horas > 3) av.push(`O registro mais recente do coletor no sistema é de ${dBR(ult.slice(0, 10))} às ${ult.slice(11, 16)}. Se a máquina está produzindo, a planilha ou a sincronização não estão atualizando (veja o sincronizacao.log).`);
+    }
+    $('avisoDados').innerHTML = av.join('<br>');
+    $('avisoDados').hidden = !av.length;
   }
 
   async function carregar() {
@@ -578,7 +596,7 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     S.aba = qual;
     document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === qual));
     ['apont', 'pend', 'radar', 'diverg'].forEach(a => $('sec-' + a).hidden = a !== qual);
-    if (qual === 'radar' && !$('frRadar').src) $('frRadar').src = 'radar.html';
+    if (qual === 'radar' && !$('frRadar').src) $('frRadar').src = 'radar.html?v=' + MG.VERSAO;
   }
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => trocarAba(b.dataset.aba)));
 
@@ -611,8 +629,19 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
   $('formSenha').addEventListener('submit', async (e) => {
     e.preventDefault();
     if ($('senhaNova').value !== $('senhaNova2').value) { $('erroSenha').textContent = 'As senhas não conferem.'; return; }
+    if ($('senhaNova').value.length < 8) { $('erroSenha').textContent = 'A senha precisa ter pelo menos 8 caracteres.'; return; }
+    $('erroSenha').textContent = '';
     const {error} = await sb.auth.updateUser({password: $('senhaNova').value});
-    if (error) { $('erroSenha').textContent = 'Não foi possível salvar: ' + error.message; return; }
+    if (error) {
+      const m = error.message || '';
+      $('erroSenha').textContent =
+        /different from the old/i.test(m) ? 'Essa já é a sua senha atual. Você já pode entrar com ela.' :
+        /session|jwt|expired|not authenticated/i.test(m) ? 'O link expirou. Volte, clique em "Criar ou trocar senha" e use o e-mail mais recente.' :
+        /at least|weak|characters/i.test(m) ? 'Senha fraca ou curta demais. Use pelo menos 8 caracteres, misturando letras e números.' :
+        'Não foi possível salvar: ' + m;
+      return;
+    }
+    aviso('Senha salva');
     history.replaceState(null, '', location.pathname);
     const {data} = await sb.auth.getSession();
     if (data.session) entrar(data.session); else mostrar('login');
@@ -628,10 +657,11 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     $('btnCriarSenha').disabled = false;
     if (error) {
       $('erroLogin').textContent = /rate|seconds|limit/i.test(error.message)
-        ? 'Muitos pedidos seguidos. Espere alguns minutos e tente de novo.' : 'Não foi possível enviar: ' + error.message;
+        ? 'Limite de e-mails atingido (o plano gratuito envia poucos por hora). Use o último e-mail recebido ou tente de novo daqui a 1 hora.'
+        : 'Não foi possível enviar: ' + error.message;
       return;
     }
-    $('msgSenhaEmail').textContent = 'Enviamos um link para ' + email + '. Abra o e-mail mais recente (o link vale por 1 hora e só funciona uma vez).';
+    $('msgSenhaEmail').textContent = 'Enviamos um link para ' + email + '. Abra o e-mail MAIS RECENTE neste mesmo navegador. O link vale por 1 hora e só funciona uma vez.';
   });
 
   let telaSenha = false;
@@ -639,16 +669,20 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     if (evento === 'PASSWORD_RECOVERY' && sess) { telaSenha = true; S.sess = sess; mostrar('senha'); }
   });
 
-  sb.auth.getSession().then(({data}) => {
+  $('btnTrocarSenha').addEventListener('click', () => { $('erroSenha').textContent = ''; $('cancelarSenha').hidden = false; mostrar('senha'); });
+  $('cancelarSenha').addEventListener('click', () => mostrar('app'));
+  $('versao').textContent = MG.VERSAO;
+
+  MG.pronto.then(erroToken => sb.auth.getSession().then(({data}) => {
     if (telaSenha) return;
     if (data.session && (TIPO_LINK === 'recovery' || TIPO_LINK === 'invite' || TIPO_LINK === 'signup')) { S.sess = data.session; mostrar('senha'); return; }
     if (data.session) { entrar(data.session); return; }
     mostrar('login');
-    if (MG.linkErro) {
-      $('erroLogin').textContent = 'O link do e-mail expirou ou já foi usado. Digite seu e-mail e clique em "Criar ou trocar senha" para receber outro.';
+    if (MG.linkErro || erroToken) {
+      $('erroLogin').textContent = 'Esse link do e-mail não vale mais: ele expirou (1 hora), já foi usado, ou um e-mail mais novo foi pedido depois dele. Digite seu e-mail e clique em "Criar ou trocar senha" para receber outro.';
       history.replaceState(null, '', location.pathname);
     }
-  });
+  }));
 })();
 </script>
 </body>

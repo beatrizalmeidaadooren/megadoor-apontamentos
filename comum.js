@@ -9,7 +9,19 @@ window.MG = (function () {
   const QUERY = new URLSearchParams(location.search);
   const linkTipo = HASH.get('type') || QUERY.get('type');
   const linkErro = HASH.get('error_code') || HASH.get('error') || QUERY.get('error_code') || QUERY.get('error');
+  const linkTokenHash = QUERY.get('token_hash');
+  const VERSAO = '2026-10-29b';
   const sb = supabase.createClient(URL, CHAVE);
+
+  // Link de e-mail no formato com token_hash (outros modelos de e-mail do Supabase): valida aqui.
+  const pronto = (async () => {
+    if (linkTokenHash && linkTipo) {
+      const { error } = await sb.auth.verifyOtp({ token_hash: linkTokenHash, type: linkTipo });
+      history.replaceState(null, '', location.pathname);
+      return error ? error.message : null;
+    }
+    return null;
+  })();
 
   async function sessao() {
     const { data } = await sb.auth.getSession();
@@ -42,8 +54,10 @@ window.MG = (function () {
         if (aoProgresso) aoProgresso(Math.min(total, feitas * PASSO), total);
       }));
     }
-    return saida.flat();
+    const tudo = saida.flat();
+    if (tudo.length < total) throw new Error(tabela + `: leitura incompleta (${tudo.length} de ${total}). Clique em Atualizar.`);
+    return tudo;
   }
 
-  return { sb, sessao, ehDona, buscarTudo, DONA, linkTipo, linkErro };
+  return { sb, sessao, ehDona, buscarTudo, DONA, linkTipo, linkErro, pronto, VERSAO };
 })();
