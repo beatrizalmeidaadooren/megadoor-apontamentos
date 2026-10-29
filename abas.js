@@ -160,7 +160,10 @@ window.MGAbas = (function () {
     throw new Error('Não encontrei as colunas NReg, Data, Tempo e Descrição em nenhuma aba do arquivo.');
   }
 
+  let importando = false;
   async function montagemImportar(file) {
+    if (importando) return;
+    importando = true;
     const msg = $('mImportMsg');
     msg.textContent = 'Lendo ' + file.name + '…';
     try {
@@ -178,17 +181,23 @@ window.MGAbas = (function () {
       const novas = linhas.filter(l => !existe.has(l.nreg)).length;
       // .MÁQUINA do arquivo só entra onde o sistema ainda está sem marcação
       const comMaq = linhas.filter(l => l._maquina && !(existe.get(l.nreg) || {}).maquina);
-      const envio = linhas.map(({ _maquina, ...r }) => ({ ...r, importado_em: new Date().toISOString() }));
-      for (let i = 0; i < envio.length; i += 500) {
-        msg.textContent = `Enviando ${nf(Math.min(i + 500, envio.length))} de ${nf(envio.length)}…`;
-        const { error } = await sb.from('montagem').upsert(envio.slice(i, i + 500), { onConflict: 'nreg' });
+      const agora = new Date().toISOString();
+      const comSet = new Set(comMaq.map(l => l.nreg));
+      // Dois lotes: sem .MÁQUINA (não mexe na marcação já existente) e com .MÁQUINA (só onde o sistema estava vazio)
+      const lotes = [linhas.filter(l => !comSet.has(l.nreg)).map(({ _maquina, ...r }) => ({ ...r, importado_em: agora })),
+                     linhas.filter(l => comSet.has(l.nreg)).map(({ _maquina, ...r }) => ({ ...r, maquina: _maquina, importado_em: agora }))];
+      let feitos = 0;
+      for (const lote of lotes) for (let i = 0; i < lote.length; i += 500) {
+        const { error } = await sb.from('montagem').upsert(lote.slice(i, i + 500), { onConflict: 'nreg' });
         if (error) throw new Error(error.message);
+        feitos += Math.min(500, lote.length - i);
+        msg.textContent = `Enviando ${nf(feitos)} de ${nf(linhas.length)}…`;
       }
-      for (const l of comMaq) await sb.from('montagem').update({ maquina: l._maquina }).eq('nreg', l.nreg);
       const datas = linhas.map(l => l.data).sort();
       msg.textContent = `Importado: ${nf(linhas.length)} apontamentos (${nf(novas)} novos) da aba "${aba}", de ${dBR(datas[0])} a ${dBR(datas[datas.length - 1])}.`;
       await montagemCarregar();
     } catch (e) { msg.textContent = ''; CTX.erro('Erro ao importar: ' + e.message); }
+    finally { importando = false; }
   }
 
   function montagemIniciar() {
@@ -229,7 +238,7 @@ window.MGAbas = (function () {
   async function limpezaCarregar() {
     $('lResumo').textContent = 'Carregando…';
     try {
-      L.linhas = await MG.buscarTudo('limpeza', '*', null, 'data');
+      L.linhas = await MG.buscarTudo('limpeza', '*', null, ['data', 'turno']);
       L.carregado = true;
       limpezaRender();
     } catch (e) { CTX.erro('Erro ao carregar a Limpeza: ' + e.message); $('lResumo').textContent = ''; }
@@ -309,7 +318,7 @@ window.MGAbas = (function () {
     const mes = $('lMes').value; if (!mes) return;
     const [y, m] = mes.split('-').map(Number);
     const ultimoDia = new Date(y, m, 0).getDate();
-    const modelo = t => { const xs = L.linhas.filter(r => r.turno === t).sort((a, b) => a.data < b.data ? 1 : -1); return xs.length ? xs[0].itens : Array(38).fill(''); };
+    const modelo = t => { const xs = L.linhas.filter(r => r.turno === t).sort((a, b) => a.data < b.data ? 1 : -1); return (xs.length && Array.isArray(xs[0].itens) && xs[0].itens.length) ? xs[0].itens : Array(38).fill(''); };
     const novas = [];
     for (let d = 1; d <= ultimoDia; d++) {
       const iso = `${y}-${pad(m)}-${pad(d)}`;
@@ -384,7 +393,7 @@ window.MGAbas = (function () {
     catch (e) { CTX.erro('Erro ao carregar as OS: ' + e.message); $('oResumo').textContent = ''; }
   }
 
-  function osRender() {
+  function osKpis() {
     const nomes = new Map();
     O.linhas.forEach(o => { const k = chave(o.mantenedor); if (k && !nomes.has(k)) nomes.set(k, String(o.mantenedor).replace(/\s+/g, ' ').trim()); });
     const selM = $('oMant'), atual = selM.value;
@@ -395,6 +404,10 @@ window.MGAbas = (function () {
       const med = xs => xs.length ? Math.round(xs.reduce((a, o) => a + MGPlanilha.totalOS(o), 0) / xs.length * 100) + '%' : '—';
       return `<div class="kpi"><span>${esc(n)} · ${dele.length} OS</span><b>${med(dele)}</b><span>das feitas: ${med(feitas)} (${feitas.length})</span></div>`;
     }).join('');
+  }
+
+  function osRender() {
+    osKpis();
     const fM = $('oMant').value, fF = $('oFeitas').value;
     const regs = O.linhas.filter(o => (!fM || chave(o.mantenedor) === fM) && (!fF || (fF === '_vazio' ? !txt(o.feitas) : norm(o.feitas) === norm(fF))))
       .sort((a, b) => (a.posicao || 1e9) - (b.posicao || 1e9) || a.id - b.id);
@@ -423,8 +436,10 @@ window.MGAbas = (function () {
     $('oMant').addEventListener('change', osRender);
     $('oFeitas').addEventListener('change', osRender);
     $('oNova').addEventListener('click', async () => {
+      const btn = $('oNova'); if (btn.disabled) return; btn.disabled = true;
       const pos = O.linhas.reduce((a, o) => Math.max(a, o.posicao || 0), 0) + 1;
-      const { data, error } = await sb.from('os').insert({ posicao: pos, data: hojeISO() }).select();
+      const { data, error } = await sb.from('os').insert({ posicao: pos, data_abertura: hojeISO() }).select();
+      btn.disabled = false;
       if (error) { CTX.erro('Erro ao criar a OS: ' + error.message); return; }
       O.linhas.push(data[0]); $('oMant').value = ''; $('oFeitas').value = ''; osRender();
       const sc = $('oTabela').closest('.scroll'); sc.scrollTop = sc.scrollHeight;
@@ -438,7 +453,8 @@ window.MGAbas = (function () {
       const { error } = await sb.from('os').update({ [k]: v, atualizado_em: new Date().toISOString() }).eq('id', o.id);
       if (error) { CTX.erro('Erro ao salvar a OS: ' + error.message); return; }
       o[k] = v; CTX.aviso('Salvo');
-      if (['conjunto', 'item', 'problema', 'solucao', 'feitas', 'mantenedor'].includes(k)) osRender();
+      if (['conjunto', 'item', 'problema', 'solucao'].includes(k)) { const b = tr.querySelector('td.num b'); if (b) b.textContent = Math.round(MGPlanilha.totalOS(o) * 100) + '%'; }
+      if (['conjunto', 'item', 'problema', 'solucao', 'feitas', 'mantenedor'].includes(k)) osKpis();
     });
     $('oTabela').addEventListener('click', async e => {
       if (!CTX.dona || !e.target.classList.contains('o-del')) return;

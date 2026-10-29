@@ -43,11 +43,11 @@ window.MGPlanilha = (function () {
   async function lerTudo(aoProgresso) {
     const p = aoProgresso || (() => {});
     const [coletor, classif, montagem, limpeza, os, subgrupos, programadas] = await Promise.all([
-      MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,qnt,anulado,oee_operador,conjunto,problema,solucao,observacao,item', null, 'nreg',
+      MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,qnt,qntdefeito,anulado,oee_operador,conjunto,problema,solucao,observacao,item', null, 'nreg',
         (a, t) => p(`Lendo apontamentos da Megadoor: ${a.toLocaleString('pt-BR')} de ${t.toLocaleString('pt-BR')}`)),
       MG.buscarTudo('classificacao', '*'),
       MG.buscarTudo('montagem', '*'),
-      MG.buscarTudo('limpeza', '*', null, 'data'),
+      MG.buscarTudo('limpeza', '*', null, ['data', 'turno']),
       MG.buscarTudo('os', '*', null, 'id'),
       MG.sb.from('subgrupos').select('*').then(r => { if (r.error) throw r.error; return r.data; }),
       MG.sb.from('programadas').select('*').then(r => { if (r.error) throw r.error; return r.data; })
@@ -60,7 +60,7 @@ window.MGPlanilha = (function () {
     const cls = {}; d.classif.forEach(c => cls[c.nreg] = c);
     const cab = ['REGISTRO', 'DATA E HORA', 'DATA', 'DIA', 'MÊS', 'ANO', 'HORA', 'H ANTERIOR', 'T CICLO', 'TURNO', 'T CICLO NOMINAL',
       'T PERDIDO', 'TAKT TIME', 'FORA DO TAKT TIME', 'KITS PERDIDOS', 'PROGRAMADA', 'GRUPO DO EE', '6 GRANDES PERDAS', 'SUBGRUPO DO OEE',
-      'OEE Operador', 'CONJUNTO', 'ITEM', 'PROBLEMA', 'SOLUÇÃO', 'OBSERVAÇÕES'];
+      'OEE Operador', 'CONJUNTO', 'ITEM', 'PROBLEMA', 'SOLUÇÃO', 'OBSERVAÇÕES', 'qnt', 'qntdefeito'];
     const linhas = [cab];
     for (const l of d.coletor) {
       const c = cls[l.nreg] || {};
@@ -70,7 +70,8 @@ window.MGPlanilha = (function () {
       linhas.push([l.nreg, serialDataHora(l.data_hora), serialDia(dia), dd, m, y, fracHora(l.hora), fracHora(l.hora_anterior),
         tc, l.idturno, NOMINAL, tc == null ? null : tc - NOMINAL, TAKT, tc == null ? null : tc - TAKT,
         tc == null ? null : (tc - TAKT) / NOMINAL, c.programada || null, c.grupo || null, c.seis_perdas || null, c.subgrupo || null,
-        l.oee_operador, l.conjunto, l.item, l.problema, l.solucao, l.observacao]);
+        l.oee_operador, l.conjunto, l.item, l.problema, l.solucao, l.observacao,
+        l.qnt, l.qntdefeito != null ? l.qntdefeito : (l.qnt == null ? null : 0)]);
     }
     const ws = XLSX.utils.aoa_to_sheet(linhas);
     marcarFormato(ws, linhas.length, [1], 'dd/mm/yyyy hh:mm:ss');

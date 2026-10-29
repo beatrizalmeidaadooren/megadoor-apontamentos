@@ -222,7 +222,7 @@ tr.outros td{color:var(--warn);font-weight:600}
 <textarea id="clip" aria-hidden="true" tabindex="-1" style="position:fixed;left:-9999px;top:0;width:1px;height:1px"></textarea>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-10-29c"></script>
+<script src="comum.js?v=2026-10-29d"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -592,6 +592,7 @@ async function carregarDoSistema(){
   }catch(e){status('Erro ao carregar: '+e.message,true)}
 }
 $('#btnSistema').addEventListener('click',carregarDoSistema);
+R=compute();   // estado vazio até os dados chegarem (evita erro ao clicar antes)
 carregarDoSistema();
 })();
 </script>

@@ -647,8 +647,8 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-10-29c"></script>
-<script src="planilha.js?v=2026-10-29c"></script>
+<script src="comum.js?v=2026-10-29d"></script>
+<script src="planilha.js?v=2026-10-29d"></script>
 <script>
 (function () {
   "use strict";
@@ -3762,7 +3762,9 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       STATE.selectedMantenedor = defaultMantenedor(STATE.os);
       // A aba "Análise Megadoor" (iframe) lê as abas Apontamentos, Limpeza e OS a partir de um arquivo .xlsx.
       var paraAnalise = { SheetNames: ["Apontamentos", "Limpeza", "OS"], Sheets: { Apontamentos: workbook.Sheets.Apontamentos, Limpeza: workbook.Sheets.Limpeza, OS: workbook.Sheets.OS } };
-      STATE.rawBuffer = XLSX.write(paraAnalise, { type: "array", bookType: "xlsx" });
+      // O arquivo só é gerado quando a aba "Análise Megadoor" ou a "Conciliação" for aberta (leva alguns segundos).
+      var cacheBuf = null;
+      STATE.rawBuffer = { slice: function () { if (!cacheBuf) cacheBuf = XLSX.write(paraAnalise, { type: "array", bookType: "xlsx" }); return cacheBuf.slice(0); } };
       megadoorLoadedForFile = null;
       concResetForNewFile();
       if (!parsed.records.length) throw new Error("Ainda não há apontamentos da Montagem no sistema. Importe o arquivo na aba Montagem do sistema.");
