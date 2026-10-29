@@ -4,6 +4,11 @@ window.MG = (function () {
   const URL = 'https://bdohqikuaoxlhjwexlqd.supabase.co';
   const CHAVE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkb2hxaWt1YW94bGhqd2V4bHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxOTEzMzUsImV4cCI6MjEwODc2NzMzNX0.TNJ7zQwTDi1XddJ6MHQ7qA1WzTHfbR26RpIQqnAnbyM';
   const DONA = 'beatriz.almeida@adooren.com';
+  // Lê o link do e-mail (criar/trocar senha) ANTES de o Supabase limpar o endereço.
+  const HASH = new URLSearchParams(location.hash.slice(1));
+  const QUERY = new URLSearchParams(location.search);
+  const linkTipo = HASH.get('type') || QUERY.get('type');
+  const linkErro = HASH.get('error_code') || HASH.get('error') || QUERY.get('error_code') || QUERY.get('error');
   const sb = supabase.createClient(URL, CHAVE);
 
   async function sessao() {
@@ -40,5 +45,5 @@ window.MG = (function () {
     return saida.flat();
   }
 
-  return { sb, sessao, ehDona, buscarTudo, DONA };
+  return { sb, sessao, ehDona, buscarTudo, DONA, linkTipo, linkErro };
 })();

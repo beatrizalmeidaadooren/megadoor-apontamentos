@@ -102,6 +102,9 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     <button class="btn primary" type="submit">Entrar</button>
     <div id="erroLogin" class="erro"></div>
   </form>
+  <p class="muted" style="margin:14px 0 6px">Primeiro acesso ou esqueceu a senha?</p>
+  <button class="btn" id="btnCriarSenha" type="button" style="width:100%;justify-content:center">Criar ou trocar senha</button>
+  <div id="msgSenhaEmail" class="ok-msg" style="margin-top:8px"></div>
 </div>
 
 <div id="painelSenha" class="caixa" hidden>
@@ -199,7 +202,7 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
 (function () {
   const sb = MG.sb;
   const TAKT = 170, NOMINAL = 85;
-  const TIPO_LINK = new URLSearchParams(location.hash.slice(1)).get('type');
+  const TIPO_LINK = MG.linkTipo;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -615,9 +618,36 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     if (data.session) entrar(data.session); else mostrar('login');
   });
 
+  // Botão "Criar ou trocar senha": manda para o e-mail um link que abre a tela "Defina sua senha".
+  $('btnCriarSenha').addEventListener('click', async () => {
+    const email = $('email').value.trim();
+    $('erroLogin').textContent = ''; $('msgSenhaEmail').textContent = '';
+    if (!email) { $('erroLogin').textContent = 'Digite seu e-mail acima e clique de novo.'; $('email').focus(); return; }
+    $('btnCriarSenha').disabled = true;
+    const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo: location.origin + location.pathname});
+    $('btnCriarSenha').disabled = false;
+    if (error) {
+      $('erroLogin').textContent = /rate|seconds|limit/i.test(error.message)
+        ? 'Muitos pedidos seguidos. Espere alguns minutos e tente de novo.' : 'Não foi possível enviar: ' + error.message;
+      return;
+    }
+    $('msgSenhaEmail').textContent = 'Enviamos um link para ' + email + '. Abra o e-mail mais recente (o link vale por 1 hora e só funciona uma vez).';
+  });
+
+  let telaSenha = false;
+  sb.auth.onAuthStateChange((evento, sess) => {
+    if (evento === 'PASSWORD_RECOVERY' && sess) { telaSenha = true; S.sess = sess; mostrar('senha'); }
+  });
+
   sb.auth.getSession().then(({data}) => {
-    if (data.session && (TIPO_LINK === 'recovery' || TIPO_LINK === 'invite')) { S.sess = data.session; mostrar('senha'); return; }
-    if (data.session) entrar(data.session); else mostrar('login');
+    if (telaSenha) return;
+    if (data.session && (TIPO_LINK === 'recovery' || TIPO_LINK === 'invite' || TIPO_LINK === 'signup')) { S.sess = data.session; mostrar('senha'); return; }
+    if (data.session) { entrar(data.session); return; }
+    mostrar('login');
+    if (MG.linkErro) {
+      $('erroLogin').textContent = 'O link do e-mail expirou ou já foi usado. Digite seu e-mail e clique em "Criar ou trocar senha" para receber outro.';
+      history.replaceState(null, '', location.pathname);
+    }
   });
 })();
 </script>
