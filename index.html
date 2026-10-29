@@ -87,6 +87,23 @@ tr.salvando td{opacity:.6}
 iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
 #salvoMsg{position:fixed;right:16px;bottom:16px;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
 #salvoMsg.on{opacity:1}
+/* limpeza */
+table.limpeza td,table.limpeza th{padding:4px 5px}
+table.limpeza th.ci,table.limpeza td.ci{padding:2px 1px;text-align:center;min-width:24px}
+table.limpeza input[type=time]{width:92px;padding:3px 4px}
+tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
+.it{appearance:none;border:0;width:22px;height:22px;border-radius:4px;font:700 11px/22px var(--mono);text-align:center;cursor:pointer;display:inline-block;color:#fff;padding:0}
+.it:disabled{cursor:default}
+.it.iv{background:#00B050}.it.ij{background:#0070C0}.it.ip{background:#FF0000}.it.if{background:#FF0000;color:#fff;outline:2px solid #7a0000;outline-offset:-2px}
+.it.ie{background:var(--empty);color:var(--muted)}.it.in{background:#FFC000;color:#FFC000}
+.legenda{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--muted);align-items:center}
+.legenda .it{margin-right:6px;vertical-align:middle;cursor:default}
+.menu-item{position:absolute;z-index:50;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px;width:290px}
+.menu-item button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:5px 6px;border-radius:6px;font:500 13px var(--sans);color:var(--ink);cursor:pointer}
+.menu-item button:hover{background:var(--surface-2)}
+#sec-os textarea{font:500 12.5px var(--sans);border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);padding:4px 6px;resize:vertical}
+#sec-os td{vertical-align:top}
+.kpi span+b+span{display:block}
 @media (max-width:700px){.top{padding:14px 16px}main{padding:12px 16px 50px}.tabs{padding:0 8px}}
 </style>
 </head>
@@ -139,6 +156,10 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     <button class="tab" role="tab" data-aba="pend" aria-selected="false">Pendências<span class="cnt" id="cntPend" hidden></span></button>
     <button class="tab" role="tab" data-aba="radar" aria-selected="false">Radar</button>
     <button class="tab" role="tab" data-aba="diverg" aria-selected="false">Divergências</button>
+    <button class="tab" role="tab" data-aba="montagem" aria-selected="false">Montagem</button>
+    <button class="tab" role="tab" data-aba="painel" aria-selected="false">Painel Montagem</button>
+    <button class="tab" role="tab" data-aba="limpeza" aria-selected="false">Limpeza</button>
+    <button class="tab" role="tab" data-aba="os" aria-selected="false">OS</button>
   </nav>
   <main>
     <div id="msg" class="erro"></div>
@@ -186,6 +207,17 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
       <iframe class="sub" id="frRadar" title="Radar de Apontamentos"></iframe>
     </section>
 
+    <!-- MONTAGEM, LIMPEZA, OS (desenhadas pelo abas.js) -->
+    <section id="sec-montagem" hidden></section>
+    <section id="sec-limpeza" hidden></section>
+    <section id="sec-os" hidden></section>
+
+    <!-- PAINEL MONTAGEM -->
+    <section id="sec-painel" hidden>
+      <div class="barra"><span class="muted">O painel lê os dados do sistema ao abrir. Depois de importar a Montagem ou mudar Limpeza/OS, clique em</span> <button class="btn small" id="recarregarPainel" type="button">Recarregar o painel</button></div>
+      <iframe class="sub" id="frPainel" title="Painel Montagem"></iframe>
+    </section>
+
     <!-- DIVERGÊNCIAS -->
     <section id="sec-diverg" hidden>
       <div class="barra">
@@ -201,7 +233,9 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-29b"></script>
+<script src="comum.js?v=2026-10-29c"></script>
+<script src="planilha.js?v=2026-10-29c"></script>
+<script src="abas.js?v=2026-10-29c"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -337,7 +371,7 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
       <div class="kpi"><span>Apontadas pelo operador</span><b>${nf(cont.apontado)}</b></div>
       <div class="kpi"><span>Turno anterior não preencheu</span><b>${nf(cont.turno_anterior)}</b></div>
       <div class="kpi"><span>Pendentes</span><b style="color:var(--bad)">${nf(cont.pendente)}</b></div>
-      <div class="kpi"><span>Classificadas por você</span><b style="color:var(--info)">${nf(minhas)}</b></div>`;
+      <div class="kpi"><span>Classificadas por você</span><b style="color:var(--info)">${nf(minhas)}</b></div>` + analiseHTML(acima);
     $('resumo').textContent = `${nf(L.length)} registros no filtro`;
 
     const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
@@ -387,6 +421,24 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
       <button class="btn small" id="pgProx" ${S.pagina >= tot - 1 ? 'disabled' : ''}>Próxima</button>`;
     $('pgAnt').onclick = () => { S.pagina--; renderApont(); };
     $('pgProx').onclick = () => { S.pagina++; renderApont(); };
+  }
+
+  // Indicadores da aba "analise" da planilha, calculados sobre as paradas acima do takt no filtro.
+  function analiseHTML(acima) {
+    const n = acima.filter(l => l.t_ciclo_s > 0);
+    if (!n.length) return '';
+    const soma = xs => xs.reduce((a, l) => a + (l.t_ciclo_s - TAKT), 0);
+    const h = s => (s / 3600).toLocaleString('pt-BR', {maximumFractionDigits: 1}) + ' h';
+    const cls = l => S.classif[l.nreg] || {};
+    const setup = n.filter(l => norm(cls(l).seis_perdas) === 'setup e ajuste');
+    const quebra = n.filter(l => norm(legado(cls(l).subgrupo)) === 'quebra de maquina');
+    const media = n.reduce((a, l) => a + l.t_ciclo_s, 0) / n.length;
+    return `
+      <div class="kpi"><span>Média do ciclo (paradas)</span><b>${nf(Math.round(media))} s</b></div>
+      <div class="kpi"><span>Kits perdidos</span><b>${n1(soma(n) / NOMINAL)}</b></div>
+      <div class="kpi"><span>Tempo perdido acima do takt</span><b>${h(soma(n))}</b></div>
+      <div class="kpi"><span>Tempo perdido por setup</span><b>${h(soma(setup))}</b></div>
+      <div class="kpi"><span>Tempo perdido por quebra</span><b>${h(soma(quebra))}</b></div>`;
   }
 
   async function salvarLinha(tr) {
@@ -554,40 +606,16 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
     const m = $('backupMsg');
     try {
       m.textContent = 'Lendo dados…';
-      const [col] = await Promise.all([
-        MG.buscarTudo('coletor', '*', null, 'nreg', (a, t) => { m.textContent = `Lendo coletor ${nf(a)} de ${nf(t)}…`; }),
-        carregarApoio()
-      ]);
+      const [dados, pend] = await Promise.all([MGPlanilha.lerTudo(t => { m.textContent = t; }), MG.buscarTudo('pendencias', '*')]);
+      dados.pendencias = pend;
       m.textContent = 'Montando o Excel…';
       await new Promise(r => setTimeout(r, 30));
-      const apont = col.map(l => {
-        const c = S.classif[l.nreg] || {};
-        const tc = l.t_ciclo_s, dt = l.data_hora ? new Date(l.data_hora.replace(' ', 'T')) : null;
-        return {
-          'REGISTRO': l.nreg, 'DATA E HORA': dt, 'DATA': l.dia ? new Date(l.dia + 'T00:00:00') : null,
-          'DIA': dt ? dt.getDate() : null, 'MÊS': dt ? dt.getMonth() + 1 : null, 'ANO': dt ? dt.getFullYear() : null,
-          'HORA': l.hora, 'H ANTERIOR': l.hora_anterior, 'T CICLO': tc, 'TURNO': l.idturno,
-          'T CICLO NOMINAL': NOMINAL, 'T PERDIDO': tc == null ? null : tc - NOMINAL, 'TAKT TIME': TAKT,
-          'FORA DO TAKT TIME': tc == null ? null : tc - TAKT, 'KITS PERDIDOS': tc == null ? null : (tc - TAKT) / NOMINAL,
-          'PROGRAMADA': c.programada || null, 'GRUPO DO OEE': c.grupo || null, '6 GRANDES PERDAS': c.seis_perdas || null,
-          'SUBGRUPO DO OEE': c.subgrupo || null, 'OEE Operador': l.oee_operador, 'SITUAÇÃO OPERADOR': ROT_OP[sitOperador(l)],
-          'CONJUNTO': l.conjunto, 'ITEM': l.item, 'PROBLEMA': l.problema, 'SOLUÇÃO': l.solucao, 'OBSERVAÇÕES': l.observacao
-        };
-      });
-      const wb = XLSX.utils.book_new();
-      const add = (nome, linhas) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas.length ? linhas : [{vazio: ''}]), nome);
-      add('Apontamentos', apont);
-      add('banco_dados', col);
-      add('classificacao', Object.values(S.classif));
-      add('pendencias', Object.values(S.pend));
-      add('subgrupos', S.subgrupos);
-      add('programadas', S.programadas);
-      add('legado_mapa', Object.entries(S.legado).map(([antigo, novo]) => ({antigo, novo})));
+      const wb = MGPlanilha.montar(dados, {extras: true});
       const d = new Date();
       XLSX.writeFile(wb, `backup_megadoor_${hojeISO()}_${pad(d.getHours())}${pad(d.getMinutes())}.xlsx`, {compression: true});
       m.textContent = 'Backup baixado.';
     } catch (e) {
-      m.textContent = ''; $('msg').textContent = 'Erro no backup: ' + e.message;
+      m.textContent = ''; $('msg').textContent = 'Erro no backup: ' + (e.message || e);
     } finally { b.disabled = false; }
   }
 
@@ -595,10 +623,13 @@ iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
   function trocarAba(qual) {
     S.aba = qual;
     document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === qual));
-    ['apont', 'pend', 'radar', 'diverg'].forEach(a => $('sec-' + a).hidden = a !== qual);
+    ['apont', 'pend', 'radar', 'diverg', 'montagem', 'painel', 'limpeza', 'os'].forEach(a => $('sec-' + a).hidden = a !== qual);
     if (qual === 'radar' && !$('frRadar').src) $('frRadar').src = 'radar.html?v=' + MG.VERSAO;
+    if (qual === 'painel' && !$('frPainel').src) $('frPainel').src = 'painel.html?v=' + MG.VERSAO;
+    if (['montagem', 'limpeza', 'os'].includes(qual)) MGAbas.abrir(qual, {dona: S.dona, aviso, erro: t => { $('msg').textContent = t; }});
   }
-  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => trocarAba(b.dataset.aba)));
+  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { $('msg').textContent = ''; trocarAba(b.dataset.aba); }));
+  $('recarregarPainel').addEventListener('click', () => { const f = $('frPainel'); if (f.contentWindow && f.contentWindow.recarregarPainel) f.contentWindow.recarregarPainel(); else f.src = 'painel.html?v=' + MG.VERSAO; });
 
   async function entrar(sess) {
     S.sess = sess;

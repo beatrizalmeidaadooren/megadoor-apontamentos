@@ -1,0 +1,468 @@
+// Abas Montagem, Limpeza e OS do sistema Megadoor.
+// Cada aba desenha a própria tela dentro da seção indicada e salva direto no Supabase.
+window.MGAbas = (function () {
+  const sb = MG.sb;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const norm = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase().replace(/^\.+/, '').replace(/\s+/g, ' ');
+  const pad = n => String(n).padStart(2, '0');
+  const nf = n => Number(n).toLocaleString('pt-BR');
+  const hojeISO = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  const dBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
+  const WD = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  const diaSemana = iso => WD[new Date(iso + 'T12:00:00').getDay()];
+  function dur(s) { if (s == null) return ''; return pad(Math.floor(s / 3600)) + ':' + pad(Math.floor(s % 3600 / 60)) + ':' + pad(s % 60); }
+  let CTX = null;   // { dona, aviso(txt), erro(txt) }
+
+  /* =================== conversões usadas na importação =================== */
+  function paraISO(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') { const p = XLSX.SSF.parse_date_code(v); return p ? p.y + '-' + pad(p.m) + '-' + pad(p.d) : null; }
+    const s = String(v).trim(); let m;
+    if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s))) return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]);
+    if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s))) return m[3] + '-' + pad(m[2]) + '-' + pad(m[1]);
+    return null;
+  }
+  function paraSeg(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') { const f = v % 1; return Math.round(f * 86400) % 86400; }
+    const m = /(\d{1,3}):(\d{2})(?::(\d{2}))?/.exec(String(v));
+    return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+(m[3] || 0)) : null;
+  }
+  const paraHora = v => { const s = paraSeg(v); return s == null ? null : dur(s); };
+  const txt = v => { if (v == null) return null; const s = String(v).trim(); return s || null; };
+
+  /* =================== MONTAGEM =================== */
+  const M = { linhas: [], pagina: 0, carregado: false };
+  const MAQ_SUGESTOES = ['MEGADOOR', 'CERCOMAK', '-', '?'];
+  const fora = d => /^IGNORA OEE|^FOLGA FISIOLOGICA/.test(norm(d));
+
+  function montagemHTML() {
+    return `
+    <div class="card"><h2>Apontamentos da Montagem</h2>
+      <p class="muted" style="margin:6px 0 0;max-width:90ch">Importe aqui o arquivo que você baixa do sistema da Montagem (.xlsx ou .csv). Registros repetidos não duplicam (a chave é o NReg) e a coluna .MÁQUINA que você já preencheu é mantida. A .MÁQUINA você preenche direto na tabela: MEGADOOR, CERCOMAK, "-" (nenhuma máquina) ou "?" (a revisar).</p>
+      <div class="barra" style="margin:12px 0 0;border-left-color:var(--good)">
+        <label class="btn primary" for="mImport" id="mImportBtn">Importar arquivo da Montagem</label>
+        <input type="file" id="mImport" accept=".xlsx,.xls,.csv" hidden>
+        <span class="muted" id="mImportMsg"></span>
+      </div>
+    </div>
+    <div class="barra">
+      <label>De <input type="date" id="mIni"></label><label>até <input type="date" id="mFim"></label>
+      <label>Turno <select id="mTurno"><option value="">Todos</option><option>Turno A</option><option>Turno B</option><option>Turno C</option></select></label>
+      <label>.MÁQUINA <select id="mMaq"><option value="">Todas</option><option value="_vazia">Sem marcação</option><option>MEGADOOR</option><option>CERCOMAK</option><option value="-">- (nenhuma)</option><option value="?">? (a revisar)</option><option value="_outra">Outras</option></select></label>
+      <label><input type="checkbox" id="mFora" checked> Esconder "Ignora OEE" e "Folga Fisiológica"</label>
+      <label>Buscar <input type="search" id="mBusca" style="width:150px" placeholder="descrição, obs, NReg"></label>
+      <span class="muted" id="mResumo"></span>
+    </div>
+    <div class="kpis" id="mKpis"></div>
+    <div class="scroll"><table id="mTabela"></table></div>
+    <div class="pag" id="mPag"></div>
+    <datalist id="mMaqLista">${MAQ_SUGESTOES.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+  }
+
+  async function montagemCarregar() {
+    $('mResumo').textContent = 'Carregando…';
+    try {
+      M.linhas = (await MG.buscarTudo('montagem', '*')).sort((a, b) => b.nreg - a.nreg);
+      M.carregado = true;
+      if (!$('mIni').value && M.linhas.length) {
+        const ult = M.linhas.reduce((a, l) => l.data > a ? l.data : a, '');
+        const d = new Date(ult + 'T12:00:00'); d.setDate(d.getDate() - 30);
+        $('mIni').value = d.toISOString().slice(0, 10);
+      }
+      montagemRender();
+    } catch (e) { CTX.erro('Erro ao carregar a Montagem: ' + e.message); $('mResumo').textContent = ''; }
+  }
+
+  function montagemFiltradas() {
+    const ini = $('mIni').value, fim = $('mFim').value, t = $('mTurno').value, mq = $('mMaq').value, esc_ = $('mFora').checked, b = norm($('mBusca').value);
+    return M.linhas.filter(l => {
+      if (ini && l.data < ini) return false;
+      if (fim && l.data > fim) return false;
+      if (t && l.turno !== t) return false;
+      if (esc_ && fora(l.descricao)) return false;
+      const q = norm(l.maquina);
+      if (mq === '_vazia' && q) return false;
+      if (mq === '_outra' && (!q || ['MEGADOOR', 'CERCOMAK', '-', '?'].includes(q))) return false;
+      if (mq && mq[0] !== '_' && q !== norm(mq)) return false;
+      if (b && !norm([l.nreg, l.descricao, l.obs, l.maquina].join(' ')).includes(b)) return false;
+      return true;
+    });
+  }
+
+  function montagemRender() {
+    const L = montagemFiltradas();
+    const contam = L.filter(l => !fora(l.descricao));
+    const mega = contam.filter(l => norm(l.maquina) === 'MEGADOOR');
+    const semMarca = contam.filter(l => !txt(l.maquina));
+    const tempo = xs => xs.reduce((a, l) => a + (l.tempo_s || 0), 0);
+    const h = s => (s / 3600).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' h';
+    $('mKpis').innerHTML = `
+      <div class="kpi"><span>Apontamentos no filtro</span><b>${nf(L.length)}</b></div>
+      <div class="kpi"><span>Tempo perdido (sem Ignora OEE/Folga)</span><b>${h(tempo(contam))}</b></div>
+      <div class="kpi"><span>Marcados MEGADOOR</span><b style="color:var(--info)">${nf(mega.length)} · ${h(tempo(mega))}</b></div>
+      <div class="kpi"><span>Sem .MÁQUINA (perdas)</span><b style="color:var(--bad)">${nf(semMarca.length)}</b></div>`;
+    $('mResumo').textContent = `${nf(M.linhas.length)} apontamentos no sistema`;
+    const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
+    if (M.pagina >= tot) M.pagina = tot - 1;
+    const pag = L.slice(M.pagina * POR, M.pagina * POR + POR);
+    const ed = CTX.dona ? '' : 'disabled';
+    let hh = `<thead><tr><th class="mine">.MÁQUINA</th><th>NReg</th><th>Data</th><th>Turno</th><th>Hora ant</th><th>Hora</th><th>Tempo</th><th>ID</th><th>Descrição</th><th>Obs</th></tr></thead><tbody>`;
+    for (const l of pag) {
+      hh += `<tr data-n="${l.nreg}"><td class="mine"><input class="maq" list="mMaqLista" value="${esc(l.maquina || '')}" ${ed} style="width:120px"></td>
+        <td class="num">${l.nreg}</td><td class="num">${dBR(l.data)}</td><td>${esc(l.turno || '')}</td><td class="num">${esc(l.hora_ant || '')}</td><td class="num">${esc(l.hora || '')}</td>
+        <td class="num">${dur(l.tempo_s)}</td><td class="num">${l.cod_id == null ? '' : l.cod_id}</td><td class="txt">${esc(l.descricao || '')}</td><td class="txt">${esc(l.obs || '')}</td></tr>`;
+    }
+    hh += '</tbody>';
+    if (!pag.length) hh = `<tbody><tr><td class="muted" style="padding:18px">${M.linhas.length ? 'Nenhum apontamento com esses filtros.' : 'Ainda não há apontamentos da Montagem no sistema. Use o botão "Importar arquivo da Montagem".'}</td></tr></tbody>`;
+    $('mTabela').innerHTML = hh;
+    $('mPag').innerHTML = `Página ${M.pagina + 1} de ${tot} <button class="btn small" id="mAnt" ${M.pagina === 0 ? 'disabled' : ''}>Anterior</button> <button class="btn small" id="mProx" ${M.pagina >= tot - 1 ? 'disabled' : ''}>Próxima</button>`;
+    $('mAnt').onclick = () => { M.pagina--; montagemRender(); };
+    $('mProx').onclick = () => { M.pagina++; montagemRender(); };
+  }
+
+  async function montagemSalvarMaquina(inp) {
+    const nreg = Number(inp.closest('tr').dataset.n);
+    const v = txt(inp.value);
+    const valor = v ? (['MEGADOOR', 'CERCOMAK'].includes(norm(v)) ? norm(v) : v) : null;
+    const { error } = await sb.from('montagem').update({ maquina: valor, maquina_em: new Date().toISOString() }).eq('nreg', nreg);
+    if (error) { CTX.erro('Erro ao salvar a .MÁQUINA: ' + error.message); return; }
+    const l = M.linhas.find(x => x.nreg === nreg); if (l) l.maquina = valor;
+    inp.value = valor || '';
+    CTX.aviso('Salvo');
+  }
+
+  // Lê o arquivo baixado da Montagem (mesmos nomes de coluna que o Painel aceita).
+  const COLS = { nreg: ['NREG'], setor: ['SETOR'], data: ['DATA'], turno: ['TURNO'], hora_ant: ['HORAANTERIOR', 'HORA ANT', 'HORA ANTERIOR'],
+    hora: ['HORA'], tempo: ['TEMPO'], id: ['OEETPSID', 'ID'], descricao: ['DESCRICAO'], obs: ['OEEOBS', 'OBS', 'OBSERVACAO', 'OBSERVACOES'], maquina: ['MAQUINA'] };
+  function lerArquivoMontagem(wb) {
+    for (const nome of wb.SheetNames) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: true, defval: null, blankrows: false });
+      for (let h = 0; h < Math.min(rows.length, 10); h++) {
+        const cab = (rows[h] || []).map(norm);
+        const ix = {};
+        for (const k in COLS) { ix[k] = -1; for (const a of COLS[k]) { const i = cab.indexOf(a); if (i !== -1) { ix[k] = i; break; } } }
+        if (ix.nreg === -1 || ix.data === -1 || ix.tempo === -1 || ix.descricao === -1) continue;
+        const saida = new Map();
+        for (const r of rows.slice(h + 1)) {
+          if (!r) continue;
+          let n = r[ix.nreg]; if (typeof n === 'string' && /^\s*\d+\s*$/.test(n)) n = Number(n);
+          if (typeof n !== 'number' || !isFinite(n) || !n) continue;
+          const g = k => ix[k] === -1 ? null : r[ix[k]];
+          const id = g('id');
+          saida.set(n, { nreg: n, setor: txt(g('setor')), turno: txt(g('turno')), data: paraISO(g('data')), hora_ant: paraHora(g('hora_ant')),
+            hora: paraHora(g('hora')), tempo_s: paraSeg(g('tempo')), cod_id: id == null || id === '' || isNaN(Number(id)) ? null : Number(id),
+            descricao: txt(g('descricao')), obs: txt(g('obs')), _maquina: txt(g('maquina')) });
+        }
+        return { aba: nome, linhas: [...saida.values()].filter(l => l.data) };
+      }
+    }
+    throw new Error('Não encontrei as colunas NReg, Data, Tempo e Descrição em nenhuma aba do arquivo.');
+  }
+
+  async function montagemImportar(file) {
+    const msg = $('mImportMsg');
+    msg.textContent = 'Lendo ' + file.name + '…';
+    try {
+      const buf = await file.arrayBuffer();
+      let wb;
+      if (/\.csv$/i.test(file.name)) {
+        let t = new TextDecoder('utf-8').decode(buf);
+        if (t.includes('�')) t = new TextDecoder('windows-1252').decode(buf);
+        wb = XLSX.read(t, { type: 'string', raw: true });
+      } else wb = XLSX.read(new Uint8Array(buf), { type: 'array', sheetRows: 200000 });
+      const { aba, linhas } = lerArquivoMontagem(wb);
+      if (!linhas.length) throw new Error('O arquivo não tem apontamentos válidos.');
+      if (!M.carregado) await montagemCarregar();
+      const existe = new Map(M.linhas.map(l => [l.nreg, l]));
+      const novas = linhas.filter(l => !existe.has(l.nreg)).length;
+      // .MÁQUINA do arquivo só entra onde o sistema ainda está sem marcação
+      const comMaq = linhas.filter(l => l._maquina && !(existe.get(l.nreg) || {}).maquina);
+      const envio = linhas.map(({ _maquina, ...r }) => ({ ...r, importado_em: new Date().toISOString() }));
+      for (let i = 0; i < envio.length; i += 500) {
+        msg.textContent = `Enviando ${nf(Math.min(i + 500, envio.length))} de ${nf(envio.length)}…`;
+        const { error } = await sb.from('montagem').upsert(envio.slice(i, i + 500), { onConflict: 'nreg' });
+        if (error) throw new Error(error.message);
+      }
+      for (const l of comMaq) await sb.from('montagem').update({ maquina: l._maquina }).eq('nreg', l.nreg);
+      const datas = linhas.map(l => l.data).sort();
+      msg.textContent = `Importado: ${nf(linhas.length)} apontamentos (${nf(novas)} novos) da aba "${aba}", de ${dBR(datas[0])} a ${dBR(datas[datas.length - 1])}.`;
+      await montagemCarregar();
+    } catch (e) { msg.textContent = ''; CTX.erro('Erro ao importar: ' + e.message); }
+  }
+
+  function montagemIniciar() {
+    $('sec-montagem').innerHTML = montagemHTML();
+    if (!CTX.dona) $('mImportBtn').style.display = 'none';
+    $('mImport').addEventListener('change', e => { const f = e.target.files[0]; if (f) montagemImportar(f); e.target.value = ''; });
+    ['mIni', 'mFim', 'mTurno', 'mMaq', 'mFora'].forEach(id => $(id).addEventListener('change', () => { M.pagina = 0; montagemRender(); }));
+    let t; $('mBusca').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { M.pagina = 0; montagemRender(); }, 250); });
+    $('mTabela').addEventListener('change', e => { if (CTX.dona && e.target.classList.contains('maq')) montagemSalvarMaquina(e.target); });
+    montagemCarregar();
+  }
+
+  /* =================== LIMPEZA =================== */
+  const L = { linhas: [], carregado: false };
+  const ITEM = {
+    V: { rot: 'V', nome: 'Feita', cls: 'iv' }, J: { rot: 'V', nome: 'Justificada', cls: 'ij' }, P: { rot: 'V', nome: 'Justificada por erro de planejamento', cls: 'ip' },
+    F: { rot: 'F', nome: 'Faltou', cls: 'if' }, '': { rot: 'F', nome: 'Ainda não preenchida', cls: 'ie' }, '-': { rot: '', nome: 'Não se aplica neste turno', cls: 'in' }
+  };
+  const ORDEM_T = { C: 0, A: 1, B: 2 };
+
+  function limpezaHTML() {
+    return `
+    <div class="card"><h2>Limpeza</h2>
+      <p class="muted" style="margin:6px 0 0;max-width:90ch">Uma linha por turno por dia, como na planilha. Clique num item para mudar. O TOTAL é a parte dos itens que se aplicam ao turno marcada como V (feita, justificada ou justificada por erro de planejamento). O % de cada turno é a média do TOTAL dos dias anteriores a hoje, igual ao topo da aba Limpeza.</p>
+      <div class="legenda" style="margin-top:10px">${Object.entries(ITEM).map(([k, o]) => `<span><i class="it ${o.cls}">${o.rot}</i>${o.nome}</span>`).join('')}</div>
+    </div>
+    <div class="kpis" id="lKpis"></div>
+    <div class="barra">
+      <label>Mês <input type="month" id="lMes"></label>
+      <label>Turno <select id="lTurno"><option value="">Todos</option><option>A</option><option>B</option><option>C</option></select></label>
+      <span class="muted" id="lResumo"></span>
+      <button class="btn small" id="lCriar" type="button" hidden>Criar as linhas deste mês</button>
+    </div>
+    <div class="scroll"><table id="lTabela" class="limpeza"></table></div>
+    <div id="lMenu" class="menu-item" hidden></div>`;
+  }
+
+  async function limpezaCarregar() {
+    $('lResumo').textContent = 'Carregando…';
+    try {
+      L.linhas = await MG.buscarTudo('limpeza', '*', null, 'data');
+      L.carregado = true;
+      limpezaRender();
+    } catch (e) { CTX.erro('Erro ao carregar a Limpeza: ' + e.message); $('lResumo').textContent = ''; }
+  }
+
+  function limpezaRender() {
+    const hoje = hojeISO();
+    const kp = ['A', 'B', 'C'].map(t => {
+      const xs = L.linhas.filter(r => r.turno === t && r.data < hoje).map(r => MGPlanilha.totalLimpeza(r.itens));
+      const p = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+      return `<div class="kpi"><span>Turno ${t} · média até ontem</span><b>${p == null ? '—' : (p * 100).toFixed(1).replace('.', ',') + '%'}</b></div>`;
+    });
+    $('lKpis').innerHTML = kp.join('');
+    const mes = $('lMes').value, t = $('lTurno').value;
+    const regs = L.linhas.filter(r => (!mes || r.data.slice(0, 7) === mes) && (!t || r.turno === t))
+      .sort((a, b) => a.data < b.data ? -1 : a.data > b.data ? 1 : ORDEM_T[a.turno] - ORDEM_T[b.turno]);
+    $('lCriar').hidden = !CTX.dona || !mes || L.linhas.some(r => r.data.slice(0, 7) === mes);
+    $('lResumo').textContent = `${nf(regs.length)} linhas`;
+    const n = Math.max(38, ...regs.map(r => (r.itens || []).length));
+    const ed = CTX.dona;
+    let h = `<thead><tr><th>Data</th><th>T</th><th>Início</th><th>Fim</th>${Array.from({ length: n }, (_, i) => `<th class="ci">${i === n - 1 ? 'C' : i + 1}</th>`).join('')}<th>Total</th><th>Pendências</th><th>Observações</th>${ed ? '<th></th>' : ''}</tr></thead><tbody>`;
+    for (const r of regs) {
+      const its = r.itens || [];
+      const tot = MGPlanilha.totalLimpeza(its);
+      const hojeCls = r.data === hoje ? ' class="hoje"' : '';
+      h += `<tr data-d="${r.data}" data-t="${esc(r.turno)}"${hojeCls}><td class="num">${dBR(r.data).slice(0, 5)} <span class="muted">${diaSemana(r.data)}</span></td><td>${esc(r.turno)}</td>
+        <td><input type="time" class="li-ini" value="${esc((r.inicio || '').slice(0, 5))}" ${ed ? '' : 'disabled'}></td>
+        <td><input type="time" class="li-fim" value="${esc((r.fim || '').slice(0, 5))}" ${ed ? '' : 'disabled'}></td>
+        ${Array.from({ length: n }, (_, i) => { const o = ITEM[its[i] || ''] || ITEM['']; return `<td class="ci"><button type="button" class="it ${o.cls}" data-i="${i}" title="${n - 1 === i ? 'Item C' : 'Item ' + (i + 1)}: ${o.nome}" ${ed ? '' : 'disabled'}>${o.rot}</button></td>`; }).join('')}
+        <td class="num"><b>${Math.round(tot * 100)}%</b></td>
+        <td><input class="li-pend" value="${esc(r.pendencias || '')}" ${ed ? '' : 'disabled'} style="width:160px"></td>
+        <td><input class="li-obs" value="${esc(r.observacoes || '')}" ${ed ? '' : 'disabled'} style="width:220px"></td>
+        ${ed ? '<td><button type="button" class="btn small li-tudo" title="Marca como feita (V verde) todos os itens que se aplicam a este turno">Tudo feito</button></td>' : ''}</tr>`;
+    }
+    h += '</tbody>';
+    if (!regs.length) h = `<tbody><tr><td class="muted" style="padding:18px">Nenhuma linha neste mês${CTX.dona ? '. Use "Criar as linhas deste mês".' : '.'}</td></tr></tbody>`;
+    $('lTabela').innerHTML = h;
+  }
+
+  function limpezaReg(tr) { return L.linhas.find(r => r.data === tr.dataset.d && r.turno === tr.dataset.t); }
+  async function limpezaSalvar(r, tr) {
+    r.atualizado_em = new Date().toISOString();
+    if (tr) tr.classList.add('salvando');
+    const { error } = await sb.from('limpeza').upsert(r, { onConflict: 'data,turno' });
+    if (tr) tr.classList.remove('salvando');
+    if (error) { CTX.erro('Erro ao salvar a limpeza: ' + error.message); return false; }
+    CTX.aviso('Salvo');
+    return true;
+  }
+
+  function limpezaMenu(btn) {
+    const menu = $('lMenu');
+    const tr = btn.closest('tr'), i = Number(btn.dataset.i);
+    menu.innerHTML = '<div class="muted">Só este item</div>' +
+      Object.entries(ITEM).map(([k, o]) => `<button type="button" data-k="${k}"><i class="it ${o.cls}">${o.rot}</i>${o.nome}</button>`).join('') +
+      '<div class="muted" style="margin-top:6px">Todos os itens que se aplicam a este turno</div>' +
+      ['V', 'J', 'P', 'F', ''].map(k => `<button type="button" data-k="${k}" data-linha="1"><i class="it ${ITEM[k].cls}">${ITEM[k].rot}</i>${ITEM[k].nome}</button>`).join('');
+    const rc = btn.getBoundingClientRect();
+    menu.style.left = Math.min(window.innerWidth - 300, rc.left + window.scrollX) + 'px';
+    menu.style.top = (rc.bottom + window.scrollY + 4) + 'px';
+    menu.hidden = false;
+    menu.onclick = async e => {
+      const b = e.target.closest('button[data-k]'); if (!b) return;
+      menu.hidden = true;
+      const r = limpezaReg(tr); if (!r) return;
+      const n = Math.max(38, (r.itens || []).length);
+      const itens = Array.from({ length: n }, (_, k) => (r.itens || [])[k] || '');
+      if (b.dataset.linha) { for (let k = 0; k < n; k++) if (itens[k] !== '-') itens[k] = b.dataset.k; }
+      else itens[i] = b.dataset.k;
+      const antes = r.itens; r.itens = itens;
+      if (!(await limpezaSalvar(r, tr))) r.itens = antes;
+      limpezaRender();
+    };
+  }
+
+  async function limpezaCriarMes() {
+    const mes = $('lMes').value; if (!mes) return;
+    const [y, m] = mes.split('-').map(Number);
+    const ultimoDia = new Date(y, m, 0).getDate();
+    const modelo = t => { const xs = L.linhas.filter(r => r.turno === t).sort((a, b) => a.data < b.data ? 1 : -1); return xs.length ? xs[0].itens : Array(38).fill(''); };
+    const novas = [];
+    for (let d = 1; d <= ultimoDia; d++) {
+      const iso = `${y}-${pad(m)}-${pad(d)}`;
+      if (new Date(iso + 'T12:00:00').getDay() === 0) continue;   // domingo sem produção
+      for (const t of ['C', 'A', 'B']) novas.push({ data: iso, turno: t, itens: modelo(t).map(x => x === '-' ? '-' : ''), inicio: null, fim: null, pendencias: null, observacoes: null });
+    }
+    if (!confirm(`Criar ${novas.length} linhas (segunda a sábado, turnos C, A e B) para ${mes.slice(5)}/${mes.slice(0, 4)}? Os itens que não se aplicam a cada turno seguem o último dia registrado.`)) return;
+    const { error } = await sb.from('limpeza').upsert(novas, { onConflict: 'data,turno', ignoreDuplicates: true });
+    if (error) { CTX.erro('Erro ao criar as linhas: ' + error.message); return; }
+    await limpezaCarregar();
+  }
+
+  function limpezaIniciar() {
+    $('sec-limpeza').innerHTML = limpezaHTML();
+    $('lMes').value = hojeISO().slice(0, 7);
+    $('lMes').addEventListener('change', limpezaRender);
+    $('lTurno').addEventListener('change', limpezaRender);
+    $('lCriar').addEventListener('click', limpezaCriarMes);
+    document.addEventListener('click', e => { const m = $('lMenu'); if (m && !m.hidden && !e.target.closest('#lMenu') && !e.target.closest('.it')) m.hidden = true; });
+    $('lTabela').addEventListener('click', async e => {
+      if (!CTX.dona) return;
+      const it = e.target.closest('button.it');
+      if (it) { limpezaMenu(it); return; }
+      if (e.target.classList.contains('li-tudo')) {
+        const tr = e.target.closest('tr'); const r = limpezaReg(tr); if (!r) return;
+        const antes = r.itens;
+        r.itens = Array.from({ length: Math.max(38, (r.itens || []).length) }, (_, k) => ((r.itens || [])[k] === '-' ? '-' : 'V'));
+        if (!(await limpezaSalvar(r, tr))) r.itens = antes;
+        limpezaRender();
+      }
+    });
+    $('lTabela').addEventListener('change', async e => {
+      if (!CTX.dona) return;
+      const tr = e.target.closest('tr'); const r = tr && limpezaReg(tr); if (!r) return;
+      const campo = e.target.classList.contains('li-ini') ? 'inicio' : e.target.classList.contains('li-fim') ? 'fim' :
+        e.target.classList.contains('li-pend') ? 'pendencias' : e.target.classList.contains('li-obs') ? 'observacoes' : null;
+      if (!campo) return;
+      const v = txt(e.target.value);
+      r[campo] = v && (campo === 'inicio' || campo === 'fim') ? v + ':00' : v;
+      await limpezaSalvar(r, tr);
+    });
+    limpezaCarregar();
+  }
+
+  /* =================== OS =================== */
+  const O = { linhas: [] };
+  const OS_COLS = [
+    ['ordem_grupo', 'ID', 'num', 70], ['aberta_por', 'Aberta por', 'txt', 110], ['data_abertura', 'Data', 'date'], ['numero', 'Nº OS', 'num', 80],
+    ['descricao', 'Descrição', 'area', 220], ['nota', 'Nota', 'txt', 140], ['mantenedor', 'Mantenedor', 'txt', 130], ['data', 'Data', 'date'],
+    ['feitas', 'Feitas', 'sel'], ['conjunto', 'Conjunto', 'area', 140], ['item', 'Item', 'area', 120], ['problema', 'Problema', 'area', 180],
+    ['solucao', 'Solução', 'area', 200], ['observacoes', 'Observações', 'area', 160], ['_total', 'Total', 'calc'], ['analise', 'Análise', 'area', 200]];
+  const chave = n => norm(n).replace(/\s+/g, ' ');
+
+  function osHTML() {
+    return `
+    <div class="card"><h2>Ordens de serviço</h2>
+      <p class="muted" style="margin:6px 0 0;max-width:90ch">O TOTAL de cada OS é a parte preenchida de Conjunto, Item, Problema e Solução (como na planilha). Para cada mantenedor: "das feitas" é a média do TOTAL das OS marcadas SIM; "todas" é a média de todas as OS dele (é o % usado nas Metas TPM).</p>
+    </div>
+    <div class="kpis" id="oKpis"></div>
+    <div class="barra">
+      <label>Mantenedor <select id="oMant"><option value="">Todos</option></select></label>
+      <label>Feitas <select id="oFeitas"><option value="">Todas</option><option>SIM</option><option>NÃO</option><option value="_vazio">Sem resposta</option></select></label>
+      <span class="muted" id="oResumo"></span>
+      <button class="btn small primary" id="oNova" type="button" hidden>Nova OS</button>
+    </div>
+    <div class="scroll"><table id="oTabela"></table></div>`;
+  }
+
+  async function osCarregar() {
+    $('oResumo').textContent = 'Carregando…';
+    try { O.linhas = await MG.buscarTudo('os', '*', null, 'id'); osRender(); }
+    catch (e) { CTX.erro('Erro ao carregar as OS: ' + e.message); $('oResumo').textContent = ''; }
+  }
+
+  function osRender() {
+    const nomes = new Map();
+    O.linhas.forEach(o => { const k = chave(o.mantenedor); if (k && !nomes.has(k)) nomes.set(k, String(o.mantenedor).replace(/\s+/g, ' ').trim()); });
+    const selM = $('oMant'), atual = selM.value;
+    selM.innerHTML = '<option value="">Todos</option>' + [...nomes.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([k, n]) => `<option value="${esc(k)}">${esc(n)}</option>`).join('');
+    selM.value = atual;
+    $('oKpis').innerHTML = [...nomes.entries()].map(([k, n]) => {
+      const dele = O.linhas.filter(o => chave(o.mantenedor) === k), feitas = dele.filter(o => norm(o.feitas) === 'SIM');
+      const med = xs => xs.length ? Math.round(xs.reduce((a, o) => a + MGPlanilha.totalOS(o), 0) / xs.length * 100) + '%' : '—';
+      return `<div class="kpi"><span>${esc(n)} · ${dele.length} OS</span><b>${med(dele)}</b><span>das feitas: ${med(feitas)} (${feitas.length})</span></div>`;
+    }).join('');
+    const fM = $('oMant').value, fF = $('oFeitas').value;
+    const regs = O.linhas.filter(o => (!fM || chave(o.mantenedor) === fM) && (!fF || (fF === '_vazio' ? !txt(o.feitas) : norm(o.feitas) === norm(fF))))
+      .sort((a, b) => (a.posicao || 1e9) - (b.posicao || 1e9) || a.id - b.id);
+    $('oResumo').textContent = `${nf(regs.length)} OS`;
+    $('oNova').hidden = !CTX.dona;
+    const ed = CTX.dona ? '' : 'disabled';
+    let h = `<thead><tr>${OS_COLS.map(c => `<th>${c[1]}</th>`).join('')}${CTX.dona ? '<th></th>' : ''}</tr></thead><tbody>`;
+    for (const o of regs) {
+      h += `<tr data-id="${o.id}">` + OS_COLS.map(([k, , tipo, w]) => {
+        const v = o[k];
+        if (tipo === 'calc') return `<td class="num"><b>${Math.round(MGPlanilha.totalOS(o) * 100)}%</b></td>`;
+        if (tipo === 'sel') return `<td><select data-k="${k}" ${ed}>${['', 'SIM', 'NÃO'].map(x => `<option ${norm(v) === norm(x) ? 'selected' : ''}>${x}</option>`).join('')}</select></td>`;
+        if (tipo === 'date') return `<td><input type="date" data-k="${k}" value="${esc(v || '')}" ${ed}></td>`;
+        if (tipo === 'num') return `<td><input type="number" data-k="${k}" value="${v == null ? '' : v}" ${ed} style="width:${w}px"></td>`;
+        if (tipo === 'area') return `<td><textarea data-k="${k}" rows="2" ${ed} style="width:${w}px">${esc(v || '')}</textarea></td>`;
+        return `<td><input data-k="${k}" value="${esc(v || '')}" ${ed} style="width:${w}px"></td>`;
+      }).join('') + (CTX.dona ? '<td><button class="btn small o-del" type="button">Excluir</button></td>' : '') + '</tr>';
+    }
+    h += '</tbody>';
+    if (!regs.length) h = '<tbody><tr><td class="muted" style="padding:18px">Nenhuma OS.</td></tr></tbody>';
+    $('oTabela').innerHTML = h;
+  }
+
+  function osIniciar() {
+    $('sec-os').innerHTML = osHTML();
+    $('oMant').addEventListener('change', osRender);
+    $('oFeitas').addEventListener('change', osRender);
+    $('oNova').addEventListener('click', async () => {
+      const pos = O.linhas.reduce((a, o) => Math.max(a, o.posicao || 0), 0) + 1;
+      const { data, error } = await sb.from('os').insert({ posicao: pos, data: hojeISO() }).select();
+      if (error) { CTX.erro('Erro ao criar a OS: ' + error.message); return; }
+      O.linhas.push(data[0]); $('oMant').value = ''; $('oFeitas').value = ''; osRender();
+      const sc = $('oTabela').closest('.scroll'); sc.scrollTop = sc.scrollHeight;
+    });
+    $('oTabela').addEventListener('change', async e => {
+      if (!CTX.dona) return;
+      const k = e.target.dataset.k; if (!k) return;
+      const tr = e.target.closest('tr'); const o = O.linhas.find(x => String(x.id) === tr.dataset.id); if (!o) return;
+      let v = e.target.value;
+      v = e.target.type === 'number' ? (v === '' ? null : Number(v)) : txt(v);
+      const { error } = await sb.from('os').update({ [k]: v, atualizado_em: new Date().toISOString() }).eq('id', o.id);
+      if (error) { CTX.erro('Erro ao salvar a OS: ' + error.message); return; }
+      o[k] = v; CTX.aviso('Salvo');
+      if (['conjunto', 'item', 'problema', 'solucao', 'feitas', 'mantenedor'].includes(k)) osRender();
+    });
+    $('oTabela').addEventListener('click', async e => {
+      if (!CTX.dona || !e.target.classList.contains('o-del')) return;
+      const tr = e.target.closest('tr'); const o = O.linhas.find(x => String(x.id) === tr.dataset.id);
+      if (!o || !confirm(`Excluir a OS ${o.numero || ''} ${o.descricao ? '(' + o.descricao.slice(0, 40) + ')' : ''}? Ela continua no último backup.`)) return;
+      const { error } = await sb.from('os').delete().eq('id', o.id);
+      if (error) { CTX.erro('Erro ao excluir: ' + error.message); return; }
+      O.linhas = O.linhas.filter(x => x !== o); CTX.aviso('OS excluída'); osRender();
+    });
+    osCarregar();
+  }
+
+  const $ = id => document.getElementById(id);
+  const iniciadas = {};
+  function abrir(qual, ctx) {
+    CTX = ctx;
+    if (iniciadas[qual]) {
+      if (qual === 'montagem') montagemCarregar(); else if (qual === 'limpeza') limpezaCarregar(); else if (qual === 'os') osCarregar();
+      return;
+    }
+    iniciadas[qual] = true;
+    if (qual === 'montagem') montagemIniciar();
+    if (qual === 'limpeza') limpezaIniciar();
+    if (qual === 'os') osIniciar();
+  }
+  return { abrir, lerArquivoMontagem };
+})();
