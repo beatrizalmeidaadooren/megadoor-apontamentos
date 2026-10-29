@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+<title>Radar de Apontamentos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#F2F4F3;--surface:#FFFFFF;--surface-2:#E7ECEA;--ink:#162027;--muted:#5A676D;--line:#D3DBD9;
+  --accent:#1D5E8A;--accent-ink:#FFFFFF;
+  --good:#17754A;--good-bg:#D9F0E2;--warn:#8A5E00;--warn-bg:#FBEBC2;--bad:#A8231B;--bad-bg:#F8DCD8;--empty:#ECEFEE;
+  --radius:10px;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0F1417;--surface:#172025;--surface-2:#202A30;--ink:#E3E9EB;--muted:#95A2A8;--line:#2B363C;
+    --accent:#74AEDA;--accent-ink:#0B1822;
+    --good:#72D29E;--good-bg:#153726;--warn:#F0C45A;--warn-bg:#3A2F10;--bad:#FF8C82;--bad-bg:#431E1B;--empty:#1B2429;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0F1417;--surface:#172025;--surface-2:#202A30;--ink:#E3E9EB;--muted:#95A2A8;--line:#2B363C;
+  --accent:#74AEDA;--accent-ink:#0B1822;
+  --good:#72D29E;--good-bg:#153726;--warn:#F0C45A;--warn-bg:#3A2F10;--bad:#FF8C82;--bad-bg:#431E1B;--empty:#1B2429;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 20px 64px;display:flex;flex-direction:column;gap:22px}
+.eyebrow{font:500 11.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(34px,5.4vw,52px)/.95 var(--display);text-transform:uppercase;letter-spacing:.01em;margin:8px 0 0;text-wrap:balance}
+h2{font:700 22px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0}
+.lead{color:var(--muted);max-width:64ch;margin:10px 0 0}
+.top{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between;padding-bottom:18px;border-bottom:2px solid var(--ink)}
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--sans);padding:9px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:focus-visible,.tab:focus-visible,.chip:focus-visible,.cell:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:14px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:var(--surface)}
+.drop.over{border-color:var(--accent);background:var(--surface-2)}
+.drop .txt{flex:1 1 260px;font-size:13.5px;color:var(--muted)}
+.drop .txt strong{color:var(--ink);font-weight:600}
+.tag{font:500 10.5px/1 var(--mono);padding:5px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
+.tag.sample{background:var(--warn-bg);color:var(--warn)}
+.tag.real{background:var(--good-bg);color:var(--good)}
+#status{font-size:13px;color:var(--muted);margin-top:4px}
+#status.err{color:var(--bad);font-weight:500}
+.rules{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;font-size:13.5px;color:var(--muted)}
+.rules label{display:inline-flex;align-items:center;gap:7px}
+.rules input[type=number],.rules input[type=text]{width:60px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:500 13px var(--mono)}
+.range{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius);padding:12px 16px}
+.range-t{font:700 17px/1 var(--display);text-transform:uppercase;letter-spacing:.04em}
+.range label{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;color:var(--muted)}
+.range input[type=date]{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:500 13px var(--mono)}
+.range .btn{padding:6px 12px;font-size:13px}
+.rules input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+.panel-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.panel-title .eyebrow{font-size:11px}
+.today{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.shift{border-radius:var(--radius);padding:14px 16px;display:flex;flex-direction:column;gap:4px;border:1px solid transparent}
+.prevlbl{grid-column:1/-1;font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.shift .nm{font:600 13px var(--sans);text-transform:uppercase;letter-spacing:.06em}
+.shift .big{font:700 44px/1 var(--display);font-variant-numeric:tabular-nums}
+.shift .sub{font:400 12.5px var(--mono);opacity:.85}
+.good{background:var(--good-bg);color:var(--good)}
+.warn{background:var(--warn-bg);color:var(--warn)}
+.bad{background:var(--bad-bg);color:var(--bad)}
+.empty{background:var(--empty);color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.rank{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.rk{display:grid;grid-template-columns:44px 150px 90px minmax(0,1fr) auto;gap:6px 18px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+.rk:last-child{border-bottom:0}
+.rk .pos{font:700 28px/1 var(--display);color:var(--muted)}
+.rk .nm{font:600 15px var(--sans)}
+.rk .big{font:700 34px/1 var(--display);font-variant-numeric:tabular-nums}
+.rk .det{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.rk .det b{color:var(--ink);font-weight:600}
+.stack{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--empty)}
+.stack i{display:block;height:100%}
+.stack .s1{background:var(--good)}.stack .s2{background:var(--warn)}.stack .s3{background:var(--bad)}
+.badge{font:600 12px/1 var(--sans);padding:7px 11px;border-radius:999px;white-space:nowrap}
+.rk .cobrar{background:var(--bad-bg);color:var(--bad)}.rk .parab{background:var(--good-bg);color:var(--good)}
+@media (max-width:760px){.rk{grid-template-columns:36px minmax(0,1fr) auto}.rk .det{grid-column:1/-1}.rk .badge{grid-column:1/-1;justify-self:start}}
+.pill.ta{background:var(--warn-bg);color:var(--warn)}
+.legend i.s1{background:var(--good)}.legend i.s2{background:var(--warn)}.legend i.s3{background:var(--bad)}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px}
+.kpi span{font-size:12.5px;color:var(--muted)}
+.kpi b{display:block;font:700 32px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 12.5px var(--mono);padding:6px 10px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{appearance:none;background:none;border:0;padding:10px 14px;font:600 14px var(--sans);color:var(--muted);border-bottom:2.5px solid transparent;cursor:pointer;white-space:nowrap}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 12px}
+.hint{font-size:13px;color:var(--muted)}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+table{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
+table.mx{min-width:100%}
+.mx th,.mx td{padding:0;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:center}
+.mx tr:last-child td,.mx tr:last-child th{border-bottom:0}
+.mx thead th{font:500 11px/1.25 var(--mono);color:var(--muted);padding:8px 6px;background:var(--surface);white-space:nowrap}
+.mx thead th small{display:block;font-size:10px;opacity:.75;text-transform:uppercase}
+.mx th.row{position:sticky;left:0;background:var(--surface);text-align:left;padding:0 14px;font:600 13.5px var(--sans);white-space:nowrap;z-index:1}
+.mx tr.sum th.row,.mx tr.sum td{border-top:2px solid var(--ink)}
+.mx td.tot,.mx th.tot{border-left:2px solid var(--ink)}
+.cell{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:64px;width:100%;height:54px;padding:4px 6px;border:0;background:transparent;color:inherit;cursor:pointer;font:inherit}
+.cell:hover{box-shadow:inset 0 0 0 2px currentColor}
+.cell .p{font:700 18px/1 var(--display)}
+.cell .q{font:400 10.5px/1 var(--mono);opacity:.8;margin-top:5px}
+.list{width:100%}
+.list th{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--surface);white-space:nowrap}
+.list td{padding:8px 12px;border-bottom:1px solid var(--line);font-size:13.5px;white-space:nowrap}
+.list td.txt{white-space:normal;min-width:140px;max-width:320px}
+.pill{font:600 11px/1 var(--sans);padding:4px 8px;border-radius:999px;white-space:nowrap}
+.pill.ok{background:var(--good-bg);color:var(--good)}
+.pill.no{background:var(--bad-bg);color:var(--bad)}
+.list td.num{font-family:var(--mono);font-size:13px}
+.list tr:last-child td{border-bottom:0}
+.bar{height:8px;border-radius:4px;background:var(--accent);min-width:2px}
+tr.outros td{color:var(--warn);font-weight:600}
+.filter{display:inline-flex;align-items:center;gap:8px;font-size:13px;background:var(--surface-2);padding:5px 6px 5px 12px;border-radius:999px}
+.filter button{appearance:none;border:0;background:var(--surface);color:var(--ink);border-radius:999px;padding:3px 9px;font:500 12px var(--sans);cursor:pointer}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px}
+.notes{border-top:1px solid var(--line);padding-top:16px;font-size:13px;color:var(--muted);display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 28px}
+.notes p{margin:0;max-width:62ch}
+.notes b{color:var(--ink);font-weight:600}
+.toast{font-size:12.5px;color:var(--good);font-weight:500}
+@media (prefers-reduced-motion:no-preference){.cell,.btn,.chip{transition:background .15s,border-color .15s,box-shadow .15s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Megadoor · coletor · paradas acima do limite</div>
+      <h1>Radar de Apontamentos</h1>
+      <p class="lead">Mostra, por turno, que parte das paradas acima de 170 segundos recebeu apontamento na coluna Oee. Os dados vêm direto do sistema, atualizados a cada sincronização do coletor.</p>
+    </div>
+  </header>
+
+  <div>
+    <div class="drop" id="drop" hidden>
+      <label class="btn primary" for="file">Carregar planilha</label>
+      <input type="file" id="file" accept=".xlsx,.xlsm,.xls,.xlsb,.csv,.txt" hidden>
+      <div class="txt"><strong>Arraste o arquivo aqui</strong> (.xlsx ou .csv), ou copie as linhas do Excel com o cabeçalho e cole nesta página (Ctrl+V). O arquivo é lido no seu navegador e não é enviado para lugar nenhum.</div>
+      <span id="srcTag" class="tag sample">Dados de exemplo</span>
+      <button class="btn" id="btnSample" type="button" hidden>Voltar ao exemplo</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="range" id="range">
+    <span class="range-t">Período de análise</span>
+    <label>De <input type="date" id="ini"></label>
+    <label>até <input type="date" id="fim"></label>
+    <button class="btn" type="button" id="btnLimpar">Usar todas as datas</button>
+    <button class="btn" type="button" id="btnSistema">Atualizar dados</button>
+    <span class="hint" id="rangeHint"></span>
+  </div>
+
+  <div class="rules" id="rules">
+    <label>Parada acima de <input type="number" id="limiar" min="1" step="1"> s</label>
+    <label>Ignorar paradas acima de <input type="number" id="maxH" min="0" step="0.5" placeholder="—"> h</label>
+    <label><input type="checkbox" id="anulados"> Ignorar anulados</label>
+    <label title="O coletor grava estes registros no meio de uma parada; a mesma parada já aparece no registro seguinte."><input type="checkbox" id="sistema"> Ignorar registros de sistema (menuid 99999)</label>
+    <label title="Quando o coletor reinicia, horaanterior volta para 06:00:00 e a duração calculada não é uma parada real."><input type="checkbox" id="reinicio"> Ignorar reinício do coletor (horaanterior 06:00:00)</label>
+    <label><input type="checkbox" id="madrugada"> Turno C (idturno <input type="text" id="turnoMad">) antes das <input type="number" id="horaMad" min="0" max="23"> h conta no dia anterior</label>
+    <label>Vermelho abaixo de <input type="number" id="verm" min="0" max="100"> %</label>
+    <label>Verde a partir de <input type="number" id="verde" min="0" max="100"> %</label>
+  </div>
+
+  <section>
+    <div class="panel-title"><h2 id="todayTitle">Último dia</h2><span class="eyebrow" id="todaySub"></span></div>
+    <div class="today" id="today"></div>
+  </section>
+
+  <section>
+    <div class="panel-title"><h2>Período</h2><div class="chips" id="period"></div></div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section>
+    <div class="panel-title"><h2>Quem cobrar, quem parabenizar</h2><span class="eyebrow" id="rankSub"></span></div>
+    <div class="rank" id="rank"></div>
+    <div class="legend" style="margin-top:10px"><span><i class="s1"></i>apontado pelo próprio turno</span><span><i class="s2"></i>deixado para o turno seguinte</span><span><i class="s3"></i>não preenchido</span></div>
+  </section>
+
+  <section>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="dia" aria-selected="true">Por dia</button>
+      <button class="tab" role="tab" data-tab="mes" aria-selected="false">Por mês</button>
+      <button class="tab" role="tab" data-tab="pend" aria-selected="false">Paradas</button>
+      <button class="tab" role="tab" data-tab="mot" aria-selected="false">Motivos apontados</button>
+    </div>
+    <div class="tabbar"><div class="hint" id="tabHint"></div><div class="chips"><span class="toast" id="toast"></span><button class="btn" id="btnCopy" type="button">Copiar para o Excel</button></div></div>
+    <div id="tabBody"></div>
+    <div class="legend" style="margin-top:12px" id="legend"></div>
+  </section>
+
+  <footer class="notes">
+    <p><b>Duração da parada:</b> hora − horaanterior de cada registro. No coletor, o primeiro registro após a meia-noite vem com horaanterior 06:00:00 e daria resultado negativo; esses registros são ignorados.</p>
+    <p><b>Turnos:</b> A das 6h às 14h, B das 14h às 22h e C das 22h às 6h. As paradas do turno C depois da meia-noite contam no dia em que o turno começou: o C de 23/09 vai até 6h de 24/09.</p>
+    <p><b>Registros ignorados:</b> menuid 99999 é gravado pelo coletor no meio de uma parada que já aparece no registro seguinte, e contá-lo duplicaria a parada. Quando horaanterior volta para 06:00:00, o coletor reiniciou e a duração não é uma parada real.</p>
+    <p><b>Percentual:</b> paradas acima do limite com Oee preenchido ÷ total de paradas acima do limite, no mesmo turno e no mesmo dia (ou mês).</p>
+    <p><b>"Turno anterior não preencheu":</b> quando outro turno aponta uma parada com esse motivo, ela conta como <b>não apontada pelo turno em que aconteceu</b>, e o turno seguinte ganha o crédito de ter coberto.</p>
+    <p><b>Duplicados:</b> registros com o mesmo nreg contam uma vez só, então colar o mesmo dia duas vezes não altera o resultado.</p>
+    <p><b>Conferência:</b> clique em qualquer célula das tabelas para ver as paradas daquele turno e período, preenchidas e não preenchidas, com o que foi apontado. Confira com o filtro da planilha.</p>
+  </footer>
+</div>
+<textarea id="clip" aria-hidden="true" tabindex="-1" style="position:fixed;left:-9999px;top:0;width:1px;height:1px"></textarea>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="comum.js"></script>
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const DEF={ini:'',fim:'',sistema:true,reinicio:true,limiar:170,maxH:'',anulados:true,madrugada:true,turnoMad:'3',horaMad:6,verm:80,verde:95};
+let S=Object.assign({},DEF);
+try{Object.assign(S,JSON.parse(localStorage.getItem('radar-apont-v3')||'{}'))}catch(e){}
+function save(){try{localStorage.setItem('radar-apont-v3',JSON.stringify(S))}catch(e){}}
+
+let BASE=[],SRC={kind:'sample'},PERIOD=null,TAB='dia',PEND=null,R=null,COPY='',STATUS='all';
+
+const WD=['dom','seg','ter','qua','qui','sex','sáb'];
+const MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const norm=s=>String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase();
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+function ymd(y,m,d){const t=new Date(Date.UTC(y,m-1,d));return t.getUTCFullYear()+'-'+pad(t.getUTCMonth()+1)+'-'+pad(t.getUTCDate())}
+function addDays(iso,n){const[y,m,d]=iso.split('-').map(Number);return ymd(y,m,d+n)}
+function wd(iso){const[y,m,d]=iso.split('-').map(Number);return WD[new Date(Date.UTC(y,m-1,d)).getUTCDay()]}
+const dLabel=iso=>iso.slice(8,10)+'/'+iso.slice(5,7);
+const mLabel=ym=>MES[+ym.slice(5,7)-1]+'/'+ym.slice(0,4);
+const TNOME={'1':'A','2':'B','3':'C'};
+const tLabel=t=>TNOME[t]?'Turno '+TNOME[t]:(/^\d+$/.test(t)?'Turno '+t:t);
+function fmtHora(s){if(s==null)return '—';s=Math.round(s);return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)}
+function fmtDur(s){s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?h+'h'+pad(m)+'m':m+'m'+pad(x)+'s'}
+const pct=(f,n)=>n?f/n*100:null;
+function cls(p){if(p==null)return 'empty';if(p<+S.verm)return 'bad';if(p<+S.verde)return 'warn';return 'good'}
+const fmtP=p=>p==null?'—':(p>99.5&&p<100?'99':Math.round(p))+'%';
+const nf=n=>n.toLocaleString('pt-BR');
+
+function parseSec(v){
+  if(v==null||v==='')return null;
+  if(typeof v==='number'){if(!isFinite(v))return null;return Math.round((v-Math.floor(v))*86400)%86400}
+  if(v instanceof Date)return v.getHours()*3600+v.getMinutes()*60+v.getSeconds();
+  const all=[...String(v).matchAll(/(\d{1,2}):(\d{2})(?::(\d{2}))?/g)];
+  if(!all.length)return null;
+  const m=all[all.length-1];return (+m[1])*3600+(+m[2])*60+(+(m[3]||0));
+}
+function parseDay(v){
+  if(v==null||v==='')return null;
+  if(typeof v==='number'){const n=Math.floor(v);if(n<20000||n>80000)return null;const t=new Date(Date.UTC(1899,11,30)+n*86400000);return t.getUTCFullYear()+'-'+pad(t.getUTCMonth()+1)+'-'+pad(t.getUTCDate())}
+  if(v instanceof Date)return ymd(v.getFullYear(),v.getMonth()+1,v.getDate());
+  const s=String(v);let m=s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return ymd(+m[1],+m[2],+m[3]);
+  m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return ymd(+m[3],+m[2],+m[1]);
+  return null;
+}
+
+/* ---------- exemplo ---------- */
+function sample(){
+  let seed=11;const rnd=()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646};
+  const mot=[['TROCA DE BROCA',5],['FALTA DE MATERIAL',4],['AJUSTE DE MÁQUINA',4],['SETUP',3],['MANUTENÇÃO',2],['Outros…',4]];
+  const tot=mot.reduce((a,b)=>a+b[1],0);
+  const pick=()=>{let r=rnd()*tot;for(const[m,w]of mot){if((r-=w)<0)return m}return mot[0][0]};
+  const taxa={'1':.95,'2':.82,'3':.64},ini={'1':6,'2':14,'3':22};
+  const out=[];let n=18000000;
+  for(let d=1;d<=24;d++){
+    const iso='2026-09-'+pad(d);if(wd(iso)==='dom')continue;
+    for(const t of['1','2','3']){
+      let sec=ini[t]*3600;const end=sec+8*3600,noise=(rnd()-.5)*.24;
+      while(true){
+        const long=rnd()<.06,dur=long?171+Math.floor(rnd()*rnd()*1500):55+Math.floor(rnd()*85);
+        sec+=dur;if(sec>end)break;
+        const filled=long&&rnd()<taxa[t]+noise;const coberto=long&&!filled&&rnd()<.35;
+        out.push({n:String(n++),d:sec>=86400?addDays(iso,1):iso,t,s:dur,h:sec%86400,a:false,o:filled?pick():coberto?'Turno anterior não preencheu':'',x:filled&&rnd()<.35?{ob:['Trocada broca 8 mm','Aguardando empilhadeira','Regulado batente','Limpeza de cavaco'][Math.floor(rnd()*4)]}:null});
+      }
+    }
+  }
+  return out;
+}
+
+/* ---------- leitura ---------- */
+function fromAoA(aoa){
+  let hi=-1;
+  for(let i=0;i<Math.min(aoa.length,30);i++){if((aoa[i]||[]).some(c=>norm(c)==='horaanterior')){hi=i;break}}
+  if(hi<0)throw new Error('Não encontrei o cabeçalho. A página procura uma coluna chamada "horaanterior" nas 30 primeiras linhas.');
+  const H=aoa[hi].map(norm),ix=k=>H.indexOf(k);
+  const c={xc:ix('conjunto'),xp:ix('problema'),xso:ix('solucao'),xob:ix('observacoes'),xit:ix('item'),n:ix('nreg'),d:ix('data'),h:ix('hora'),ha:ix('horaanterior'),t:ix('idturno'),o:ix('oee'),a:ix('anulado'),m:ix('menuid')};
+  const miss=[['data',c.d],['hora',c.h],['horaanterior',c.ha],['idturno',c.t],['Oee',c.o]].filter(x=>x[1]<0).map(x=>x[0]);
+  if(miss.length)throw new Error('Faltam estas colunas no cabeçalho: '+miss.join(', ')+'.');
+  const out=[];let skip=0,prevH=null;
+  for(let i=hi+1;i<aoa.length;i++){
+    const r=aoa[i];if(!r)continue;
+    const h=parseSec(r[c.h]),ha=parseSec(r[c.ha]),d=parseDay(r[c.d]);
+    if(h==null||ha==null||!d){if(r.some(v=>v!=null&&v!==''))skip++;continue}
+    let s=h-ha;
+    const rs=ha===21600&&prevH!==21600;prevH=h;
+    const sys=c.m>=0&&String(r[c.m]).trim()==='99999';
+    const tv=r[c.t];const t=tv==null||tv===''?'?':(typeof tv==='number'?String(Math.round(tv)):String(tv).trim());
+    const av=c.a>=0?r[c.a]:0;const a=av===1||av===true||['1','sim','s','true'].includes(norm(av));
+    const ov=r[c.o];const o=ov==null?'':String(ov).trim();
+    let x=null;for(const k of['c','p','so','ob','it']){const j=c['x'+k];if(j<0)continue;const v=r[j];if(v!=null&&String(v).trim()!==''){x=x||{};x[k]=String(v).trim()}}
+    out.push({n:c.n>=0&&r[c.n]!=null&&r[c.n]!==''?String(r[c.n]).trim():null,d,t,s,h,a,o,rs,sys,x});
+  }
+  return{rows:out,skip};
+}
+function parseText(txt){
+  const first=txt.split(/\r?\n/,1)[0]||'';
+  const sep=first.includes('\t')?'\t':(first.split(';').length>first.split(',').length?';':',');
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<txt.length;i++){
+    const ch=txt[i];
+    if(q){if(ch==='"'){if(txt[i+1]==='"'){f+='"';i++}else q=false}else f+=ch;continue}
+    if(ch==='"'&&f===''){q=true;continue}
+    if(ch===sep){row.push(f);f='';continue}
+    if(ch==='\n'||ch==='\r'){if(ch==='\r'&&txt[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f='';continue}
+    f+=ch;
+  }
+  if(f!==''||row.length){row.push(f);rows.push(row)}
+  return rows.map(r=>r.map(v=>v===''?null:v));
+}
+function load(aoa,label){
+  const{rows,skip}=fromAoA(aoa);
+  if(!rows.length)throw new Error('Não encontrei registros válidos. Confira se data, hora e horaanterior estão preenchidas.');
+  BASE=rows;SRC={kind:'file',label,skip};PERIOD=null;PEND=null;run();
+}
+const tick=()=>new Promise(r=>setTimeout(r,30));
+function status(msg,err){const el=$('#status');el.textContent=msg||'';el.className=err?'err':''}
+async function handleFile(file){
+  status('Lendo '+file.name+'… arquivos grandes podem levar alguns segundos.');await tick();
+  try{
+    const buf=await file.arrayBuffer();
+    if(/\.(csv|txt|tsv)$/i.test(file.name)){
+      let txt=new TextDecoder('utf-8').decode(buf);
+      if(txt.includes('\uFFFD'))txt=new TextDecoder('windows-1252').decode(buf);
+      load(parseText(txt),file.name);return;
+    }
+    if(typeof XLSX==='undefined')throw new Error('O leitor de Excel não carregou. Verifique a internet e recarregue a página, ou salve a aba como CSV e carregue o CSV.');
+    const wb=XLSX.read(buf,{type:'array'});
+    const head=n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:null,range:{s:{r:0,c:0},e:{r:29,c:80}}});
+    let name=wb.SheetNames.find(n=>norm(n)==='megadoor coletor')
+      ||wb.SheetNames.find(n=>{try{return head(n).some(r=>(r||[]).some(c=>norm(c)==='horaanterior'))}catch(e){return false}})
+      ||wb.SheetNames[0];
+    status('Processando a aba '+name+'…');await tick();
+    const aoa=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:null,blankrows:false});
+    load(aoa,file.name+' · aba '+name);
+  }catch(e){status(e.message,true)}
+}
+
+/* ---------- cálculo ---------- */
+const stLbl=p=>p.f?'Preenchido':p.ta?'Deixado para o turno seguinte':'Não preenchido';
+const isTA=o=>norm(o).startsWith('turno anterior');
+function isInfo(p){const ob=norm((p.x&&p.x.ob)||'');return !norm(p.o).startsWith('outro')||/[a-z0-9]{3}/.test(ob)}
+function compute(){
+  const seen=new Set(),P=[];let dup=0,anul=0,total=0,reset=0,longo=0,curtos=0,fora=0,minD=null,maxD=null,sisN=0,reiN=0,lastD=null,lastH=null;const rec=new Map();
+  const mx=parseFloat(String(S.maxH).replace(',','.'));const maxS=mx>0?mx*3600:Infinity;
+  const lim=+S.limiar||170,hm=(+S.horaMad||0)*3600,tm=String(S.turnoMad).trim();
+  for(const r of BASE){
+    if(r.n!=null){if(seen.has(r.n)){dup++;continue}seen.add(r.n)}
+    total++;
+    let day=r.d;if(S.madrugada&&r.t===tm&&r.h<hm)day=addDays(day,-1);
+    if(!minD||day<minD)minD=day;if(!maxD||day>maxD)maxD=day;
+    if(S.ini&&day<S.ini){fora++;continue}
+    if(S.fim&&day>S.fim){fora++;continue}
+    rec.set(day+'|'+r.t,(rec.get(day+'|'+r.t)||0)+1);
+    if(!lastD||r.d>lastD||(r.d===lastD&&r.h>lastH)){lastD=r.d;lastH=r.h}
+    if(S.anulados&&r.a){anul++;continue}
+    if(S.sistema&&r.sys){sisN++;continue}
+    if(r.s<0){reset++;continue}
+    if(S.reinicio&&r.rs){reiN++;continue}
+    if(r.s<=lim){if(r.o!=='')curtos++;continue}
+    if(r.s>maxS){longo++;continue}
+    const ta=r.o!==''&&isTA(r.o)?1:0;
+    P.push({n:r.n,day,mes:day.slice(0,7),t:r.t,s:r.s,h:r.h,o:r.o,x:r.x,ta,f:r.o!==''&&!ta?1:0});
+  }
+  const turnos=[...new Set(P.map(p=>p.t))].sort((a,b)=>(+a-+b)||a.localeCompare(b));
+  const months=[...new Set(P.map(p=>p.mes))].sort();
+  const days=[...new Set(P.map(p=>p.day))].sort();
+  const allT=[...new Set([...rec.keys()].map(k=>k.split('|')[1]))];for(const t of allT)if(!turnos.includes(t))turnos.push(t);turnos.sort((a,b)=>(+a-+b)||a.localeCompare(b));
+  const allDays=[...new Set([...rec.keys()].map(k=>k.split('|')[0]))].sort();
+  return{P,turnos,months,days,dup,anul,total,reset,longo,curtos,fora,minD,maxD,sisN,reiN,rec,lastD,lastH,allDays};
+}
+function run(){
+  R=compute();
+  if(PERIOD!=='all'&&!R.months.includes(PERIOD))PERIOD=R.months[R.months.length-1]||'all';
+  render();
+}
+const inPeriod=p=>PERIOD==='all'||p.mes===PERIOD;
+
+/* ---------- render ---------- */
+function render(){
+  const tag=$('#srcTag');
+  if(SRC.kind==='sample'){tag.className='tag sample';tag.textContent='Dados de exemplo';$('#btnSample').hidden=true;
+    status('Você está vendo dados inventados, só para mostrar como a página funciona. Carregue sua planilha para ver os números reais.')}
+  else{tag.className='tag real';tag.textContent='Seus dados';$('#btnSample').hidden=false;
+    let m=SRC.label+' · '+nf(R.total)+' registros lidos';
+    if(R.dup)m+=' · '+nf(R.dup)+' duplicados ignorados';
+    if(R.anul)m+=' · '+nf(R.anul)+' anulados ignorados';
+    if(SRC.skip)m+=' · '+nf(SRC.skip)+' linhas sem data ou hora';
+    if(R.sisN)m+=' · '+nf(R.sisN)+' registros de sistema (menuid 99999) ignorados';
+    if(R.reset)m+=' · '+nf(R.reset)+' com horaanterior maior que hora (ignorados)';
+    if(R.reiN)m+=' · '+nf(R.reiN)+' reinícios do coletor ignorados';
+    if(R.longo)m+=' · '+nf(R.longo)+' paradas acima do máximo (ignoradas)';
+    status(m)}
+  const fb=iso=>iso?dLabel(iso)+'/'+iso.slice(0,4):'';
+  $('#ini').min=$('#fim').min=R.minD||'';$('#ini').max=$('#fim').max=R.maxD||'';
+  $('#rangeHint').textContent=R.minD?('A planilha vai de '+fb(R.minD)+' a '+fb(R.maxD)+'.'+(S.ini||S.fim?' Analisando '+(S.ini?'de '+fb(S.ini):'desde o início')+(S.fim?' até '+fb(S.fim):' até o fim')+'.':'')):'';
+  renderToday();renderPeriod();renderKpis();renderRank();renderTab();
+  $('#legend').innerHTML=`<span><i class="bad"></i>abaixo de ${+S.verm}%</span><span><i class="warn"></i>${+S.verm}% a ${+S.verde}%</span><span><i class="good"></i>${+S.verde}% ou mais</span><span><i class="empty"></i>sem paradas acima de ${+S.limiar}s</span>`;
+}
+function dayCards(day,isLast){
+  return R.turnos.map(t=>{
+    let n=0,f=0,ta=0;for(const p of R.P)if(p.day===day&&p.t===t){n++;f+=p.f;ta+=p.ta}
+    const rc=R.rec.get(day+'|'+t)||0,pc=pct(f,n);
+    let sub;
+    if(n)sub=f+' de '+n+' apontadas pelo turno'+(ta?' · '+ta+' deixadas para o seguinte':'')+' · '+(n-f-ta)+' não preenchidas';
+    else if(rc)sub=nf(rc)+' registros, nenhuma parada acima de '+(+S.limiar)+' s';
+    else sub=isLast?'sem registros ainda (turno não começou ou planilha termina antes)':'sem registros neste dia';
+    return `<button class="shift ${cls(pc)} cellbtn" style="text-align:left;cursor:pointer;font:inherit" data-col="day" data-v="${day}" data-t="${esc(t)}" title="Ver as paradas deste turno">
+      <span class="nm">${esc(tLabel(t))}</span><span class="big">${fmtP(pc)}</span><span class="sub">${sub}</span></button>`;
+  }).join('');
+}
+function renderToday(){
+  const el=$('#today');
+  if(!R.allDays.length){el.innerHTML='<div class="shift empty"><span class="nm">Sem dados</span><span class="sub">Nenhum registro no período.</span></div>';$('#todayTitle').textContent='Último dia';$('#todaySub').textContent='';return}
+  const last=R.allDays[R.allDays.length-1],prev=R.allDays[R.allDays.length-2];
+  $('#todayTitle').textContent='Último dia · '+wd(last)+' '+dLabel(last);
+  $('#todaySub').textContent='Último registro: '+dLabel(R.lastD)+' às '+fmtHora(R.lastH);
+  el.innerHTML=dayCards(last,true)+(prev?`<div class="prevlbl">Dia anterior · ${wd(prev)} ${dLabel(prev)}</div>`+dayCards(prev,false):'');
+}
+function renderPeriod(){
+  const opts=[['all','Tudo'],...R.months.map(m=>[m,mLabel(m)])];
+  $('#period').innerHTML=opts.map(([v,l])=>`<button class="chip" data-period="${v}" aria-pressed="${v===PERIOD}">${l}</button>`).join('');
+}
+function renderKpis(){
+  let n=0,f=0,ta=0;for(const p of R.P)if(inPeriod(p)){n++;f+=p.f;ta+=p.ta}
+  const pc=pct(f,n);
+  $('#kpis').innerHTML=`
+    <div class="kpi"><span>Paradas acima de ${+S.limiar}s</span><b>${nf(n)}</b></div>
+    <div class="kpi"><span>Apontadas pelo próprio turno</span><b>${nf(f)}</b></div>
+    <div class="kpi"><span>Deixadas para o turno seguinte</span><b>${nf(ta)}</b></div>
+    <div class="kpi"><span>Não preenchidas</span><b>${nf(n-f-ta)}</b></div>
+    <div class="kpi"><span>Preenchimento do próprio turno</span><b style="color:var(--${cls(pc)==='empty'?'muted':cls(pc)})">${fmtP(pc)}</b></div>`;
+}
+function renderRank(){
+  const L=R.P.filter(inPeriod),ord=R.turnos,next=t=>ord[(ord.indexOf(t)+1)%ord.length];
+  $('#rankSub').textContent=PERIOD==='all'?'Todo o período':mLabel(PERIOD);
+  const st=ord.map(t=>({t,n:0,f:0,ta:0,info:0,cob:0}));const by=Object.fromEntries(st.map(o=>[o.t,o]));
+  for(const p of L){const o=by[p.t];if(!o)continue;o.n++;o.f+=p.f;o.ta+=p.ta;if(p.f&&isInfo(p))o.info++;if(p.ta&&ord.length>1)by[next(p.t)].cob++}
+  const rows=st.filter(o=>o.n).sort((a,b)=>(b.f/b.n)-(a.f/a.n)||b.cob-a.cob);
+  if(!rows.length){$('#rank').innerHTML='<div class="rk"><span class="hint" style="grid-column:1/-1">Nenhuma parada acima do limite no período.</span></div>';return}
+  const best=rows[0],worst=rows[rows.length-1];
+  $('#rank').innerHTML=rows.map((o,i)=>{
+    const pc=o.f/o.n*100,nao=o.n-o.f-o.ta,w=v=>(v/o.n*100).toFixed(2)+'%';
+    let badge='';
+    if(rows.length>1&&o===best&&o.f>0&&best.f/best.n>worst.f/worst.n)badge='<span class="badge parab">Parabenizar</span>';
+    else if(rows.length>1&&o===worst&&(nao+o.ta)>0)badge=`<span class="badge cobrar">Cobrar ${nao+o.ta} apontamentos</span>`;
+    return `<div class="rk"><span class="pos">${i+1}º</span><span class="nm">${esc(tLabel(o.t))}</span><span class="big" style="color:var(--${cls(pc)})">${fmtP(pc)}</span>
+      <div class="det"><div class="stack" title="${o.f} próprio turno · ${o.ta} para o seguinte · ${nao} não preenchidas"><i class="s1" style="width:${w(o.f)}"></i><i class="s2" style="width:${w(o.ta)}"></i><i class="s3" style="width:${w(nao)}"></i></div>
+      <span><b>${o.f}</b> de ${o.n} apontadas pelo próprio turno · <b>${o.ta}</b> deixadas para o turno seguinte · <b>${nao}</b> não preenchidas</span>
+      <span>${o.f?`${Math.round(o.info/o.f*100)}% dos apontamentos dizem o motivo (não é só "Outros" sem observação)`:'Nenhum apontamento próprio'}${o.cob?` · cobriu <b>${o.cob}</b> do turno anterior`:''}</span></div>${badge}</div>`;
+  }).join('');
+}
+function matrix(list,cols,keyOf,head,colName,recFn){
+  const m=new Map(),rt=new Map(),ct=new Map(),g={n:0,f:0};
+  const add=(mp,k,f)=>{let o=mp.get(k);if(!o){o={n:0,f:0};mp.set(k,o)}o.n++;o.f+=f};
+  for(const p of list){const c=keyOf(p);add(m,p.t+'|'+c,p.f);add(rt,p.t,p.f);add(ct,c,p.f);g.n++;g.f+=p.f}
+  const cell=(o,attrs,extra,tip,rc)=>{const pc=o?pct(o.f,o.n):null;
+    return `<td class="${cls(pc)} ${extra||''}"><button class="cell cellbtn" ${attrs} title="${esc(tip)}${o?': '+o.f+' de '+o.n+' paradas apontadas. Clique para ver as paradas.':''}"><span class="p">${fmtP(pc)}</span><span class="q">${o?o.f+'/'+o.n:(rc==null?'—':rc?'sem paradas':'sem registro')}</span></button></td>`};
+  let h='<div class="scroll"><table class="mx"><thead><tr><th class="row">Turno</th>'+cols.map(head).join('')+'<th class="tot">Total</th></tr></thead><tbody>';
+  const tsv=[['Turno',...cols.map(c=>colName(c)),'Total']];
+  for(const t of R.turnos){
+    h+=`<tr><th class="row">${esc(tLabel(t))}</th>`+cols.map(c=>cell(m.get(t+'|'+c),`data-col="${list===R.P?'mes':'day'}" data-v="${c}" data-t="${esc(t)}"`,'',tLabel(t)+' · '+colName(c),recFn?recFn(t,c):null)).join('')+cell(rt.get(t),`data-col="period" data-t="${esc(t)}"`,'tot',tLabel(t)+' no período')+'</tr>';
+    tsv.push([tLabel(t),...cols.map(c=>{const o=m.get(t+'|'+c);return o?(o.f/o.n*100).toFixed(1).replace('.',',')+'%':''}),(()=>{const o=rt.get(t);return o?(o.f/o.n*100).toFixed(1).replace('.',',')+'%':''})()]);
+  }
+  h+=`<tr class="sum"><th class="row">Todos os turnos</th>`+cols.map(c=>cell(ct.get(c),`data-col="${list===R.P?'mes':'day'}" data-v="${c}"`,'','Todos os turnos · '+colName(c))).join('')+cell(g.n?g:null,'data-col="period"','tot','Todos os turnos no período')+'</tr>';
+  tsv.push(['Todos os turnos',...cols.map(c=>{const o=ct.get(c);return o?(o.f/o.n*100).toFixed(1).replace('.',',')+'%':''}),g.n?(g.f/g.n*100).toFixed(1).replace('.',',')+'%':'']);
+  COPY=tsv.map(r=>r.join('\t')).join('\n');
+  return h+'</tbody></table></div>';
+}
+function renderTab(){
+  document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===TAB));
+  const body=$('#tabBody'),hint=$('#tabHint');$('#toast').textContent='';
+  $('#legend').hidden=!(TAB==='dia'||TAB==='mes');
+  if(!R.P.length){body.innerHTML='<p class="hint">Nenhuma parada acima do limite nos dados carregados.</p>';hint.textContent='';COPY='';return}
+  if(TAB==='dia'){
+    const list=R.P.filter(inPeriod),cols=R.allDays.filter(d=>PERIOD==='all'||d.slice(0,7)===PERIOD);
+    hint.textContent=(PERIOD==='all'?'Todos os dias':'Dias de '+mLabel(PERIOD))+'. Cada célula mostra o % e quantas paradas foram apontadas do total.';
+    body.innerHTML=matrix(list,cols,p=>p.day,c=>`<th><small>${wd(c)}</small>${dLabel(c)}</th>`,c=>dLabel(c),(t,c)=>R.rec.get(c+'|'+t)||0);
+  }else if(TAB==='mes'){
+    hint.textContent='Todos os meses carregados, independente do período escolhido.';
+    body.innerHTML=matrix(R.P,R.months,p=>p.mes,c=>`<th>${mLabel(c)}</th>`,c=>mLabel(c));
+  }else if(TAB==='pend'){
+    const flt=PEND
+      ?p=>(PEND.col==='period'?inPeriod(p):p[PEND.col]===PEND.v)&&(!PEND.t||p.t===PEND.t)
+      :inPeriod;
+    const base=R.P.filter(flt);
+    const nSim=base.filter(p=>p.f===1).length,nTa=base.filter(p=>p.ta===1).length,nNao=base.length-nSim-nTa;
+    const tm=String(S.turnoMad).trim(),hm=(+S.horaMad||0)*3600,ok=p=>S.madrugada&&p.t===tm&&p.h<hm?p.h+86400:p.h;
+    const list=base.filter(p=>STATUS==='all'||(STATUS==='sim'?p.f===1:STATUS==='ta'?p.ta===1:(p.f===0&&p.ta===0))).sort((a,b)=>a.day<b.day?1:a.day>b.day?-1:(a.t===b.t?ok(a)-ok(b):(+a.t-+b.t)||a.t.localeCompare(b.t)));
+    let desc=PEND?[PEND.t?tLabel(PEND.t):'Todos os turnos',PEND.col==='day'?dLabel(PEND.v):PEND.col==='mes'?mLabel(PEND.v):(PERIOD==='all'?'todo o período':mLabel(PERIOD))].join(' · '):(PERIOD==='all'?'Todo o período':mLabel(PERIOD));
+    const chip=(v,l,n)=>`<button class="chip" data-status="${v}" aria-pressed="${STATUS===v}">${l} · ${nf(n)}</button>`;
+    hint.innerHTML=`<div class="chips"><span class="filter">${esc(desc)}${PEND?' <button type="button" id="clearPend">Limpar filtro</button>':''}</span>${chip('all','Todas',base.length)}${chip('sim','Preenchidas pelo turno',nSim)}${chip('ta','Deixadas para o seguinte',nTa)}${chip('nao','Não preenchidas',nNao)}</div>`;
+    const X=[['o','Oee (motivo)'],['ob','Observações'],['p','Problema'],['so','Solução'],['c','Conjunto'],['it','Item']];
+    const val=(p,k)=>k==='o'?p.o:((p.x&&p.x[k])||'');
+    const cols=X.filter(([k])=>k==='o'||list.some(p=>val(p,k)!==''));
+    const max=500;
+    const rows=list.slice(0,max).map(p=>`<tr><td><span class="pill ${p.f?'ok':p.ta?'ta':'no'}">${stLbl(p)}</span></td><td class="num">${dLabel(p.day)} <span style="color:var(--muted)">${wd(p.day)}</span></td><td>${esc(tLabel(p.t))}</td><td class="num">${fmtHora((p.h-p.s+86400)%86400)}</td><td class="num">${fmtHora(p.h)}</td><td class="num">${fmtDur(p.s)}</td>${cols.map(([k])=>{const v=val(p,k);return `<td class="txt">${v?esc(v):'<span style="color:var(--muted)">—</span>'}</td>`}).join('')}<td class="num" style="color:var(--muted)">${esc(p.n||'—')}</td></tr>`).join('');
+    body.innerHTML=list.length?`<div class="scroll"><table class="list"><thead><tr><th>Situação</th><th>Dia</th><th>Turno</th><th>Início (horaanterior)</th><th>Fim (hora)</th><th>Duração</th>${cols.map(([,l])=>`<th>${l}</th>`).join('')}<th>nreg</th></tr></thead><tbody>${rows}</tbody></table></div>${list.length>max?`<p class="hint">Mostrando as ${max} mais recentes. O botão Copiar leva todas as ${nf(list.length)}.</p>`:''}`:`<p class="hint">${STATUS==='nao'?'Todas as paradas deste filtro têm apontamento.':STATUS==='sim'?'Nenhuma parada deste filtro foi apontada.':'Nenhuma parada neste filtro.'}</p>`;
+    COPY=[['Situação','Dia','Turno','horaanterior','hora','Segundos',...cols.map(([,l])=>l),'nreg'],...list.map(p=>[stLbl(p),dLabel(p.day)+'/'+p.day.slice(0,4),tLabel(p.t),fmtHora((p.h-p.s+86400)%86400),fmtHora(p.h),p.s,...cols.map(([k])=>String(val(p,k)).replace(/[\t\r\n]+/g,' ')),p.n||''])].map(r=>r.join('\t')).join('\n');
+  }else{
+    const list=R.P.filter(p=>p.f===1&&inPeriod(p));
+    const cnt=new Map();for(const p of list){let o=cnt.get(p.o);if(!o){o={all:0};cnt.set(p.o,o)}o.all++;o[p.t]=(o[p.t]||0)+1}
+    const arr=[...cnt.entries()].sort((a,b)=>b[1].all-a[1].all),mx=arr.length?arr[0][1].all:1;
+    const outros=arr.filter(([k])=>norm(k).startsWith('outro')).reduce((a,[,o])=>a+o.all,0);
+    hint.textContent=(PERIOD==='all'?'Todo o período':mLabel(PERIOD))+'. '+(list.length?'"Outros" representa '+Math.round(outros/list.length*100)+'% dos apontamentos. Se essa parte cresce, o % de preenchimento sobe mas a informação fica mais pobre.':'')+(R.curtos?' Há também '+nf(R.curtos)+' apontamentos em paradas de até '+(+S.limiar)+'s, que não entram no cálculo.':'');
+    body.innerHTML=list.length?`<div class="scroll"><table class="list"><thead><tr><th>Motivo (Oee)</th>${R.turnos.map(t=>`<th>${esc(tLabel(t))}</th>`).join('')}<th>Total</th><th>%</th><th style="width:30%"></th></tr></thead><tbody>${arr.map(([k,o])=>`<tr class="${norm(k).startsWith('outro')?'outros':''}"><td>${esc(k)}</td>${R.turnos.map(t=>`<td class="num">${o[t]||0}</td>`).join('')}<td class="num">${o.all}</td><td class="num">${Math.round(o.all/list.length*100)}%</td><td><div class="bar" style="width:${o.all/mx*100}%"></div></td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">Nenhum apontamento no período.</p>';
+    COPY=[['Motivo',...R.turnos.map(tLabel),'Total'],...arr.map(([k,o])=>[k,...R.turnos.map(t=>o[t]||0),o.all])].map(r=>r.join('\t')).join('\n');
+  }
+}
+
+/* ---------- eventos ---------- */
+const fields=['ini','fim','sistema','reinicio','limiar','maxH','anulados','madrugada','turnoMad','horaMad','verm','verde'];
+for(const k of fields){const el=$('#'+k);if(el.type==='checkbox')el.checked=!!S[k];else el.value=S[k];
+  el.addEventListener('change',()=>{S[k]=el.type==='checkbox'?el.checked:el.value;save();run()})}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{TAB=b.dataset.tab;if(TAB!=='pend')PEND=null;renderTab()}));
+$('#period').addEventListener('click',e=>{const b=e.target.closest('[data-period]');if(!b)return;PERIOD=b.dataset.period;PEND=null;renderPeriod();renderKpis();renderRank();renderTab()});
+document.addEventListener('click',e=>{
+  if(e.target.id==='clearPend'){PEND=null;renderTab();return}
+  const st=e.target.closest('[data-status]');if(st){STATUS=st.dataset.status;renderTab();return}
+  const b=e.target.closest('.cellbtn');if(!b)return;
+  PEND={col:b.dataset.col,v:b.dataset.v,t:b.dataset.t||null};
+  if(b.dataset.col==='mes'&&TAB==='dia')PEND.col='day';
+  TAB='pend';renderTab();$('.tabs').scrollIntoView({block:'start',behavior:'smooth'});
+});
+$('#btnCopy').addEventListener('click',()=>{
+  const ok=()=>{$('#toast').textContent='Copiado. Cole no Excel com Ctrl+V.'};
+  const fb=()=>{const t=$('#clip');t.value=COPY;t.select();try{document.execCommand('copy');ok()}catch(e){$('#toast').textContent='Não consegui copiar.'}};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(COPY).then(ok,fb);else fb();
+});
+$('#file').addEventListener('change',e=>{const f=e.target.files[0];if(f)handleFile(f);e.target.value=''});
+const drop=$('#drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)handleFile(f)});
+document.addEventListener('paste',e=>{
+  if(e.target.matches&&e.target.matches('input'))return;
+  const txt=(e.clipboardData||window.clipboardData).getData('text');
+  if(!txt||!/horaanterior/i.test(txt)){status('Para colar, copie as linhas do Excel incluindo o cabeçalho (com a coluna horaanterior).',true);return}
+  e.preventDefault();
+  try{load(parseText(txt),'Dados colados')}catch(err){status(err.message,true)}
+});
+$('#btnLimpar').addEventListener('click',()=>{S.ini='';S.fim='';$('#ini').value='';$('#fim').value='';save();run()});
+$('#btnSample').addEventListener('click',()=>{BASE=sample();SRC={kind:'sample'};PERIOD=null;PEND=null;run()});
+
+
+/* ---------- leitura do sistema (Supabase) ---------- */
+async function carregarDoSistema(){
+  status('Carregando os dados do sistema…');
+  try{
+    const sess=await MG.sessao();
+    if(!sess){status('Faça login na página inicial do sistema para ver o Radar.',true);return}
+    const rows=await MG.buscarTudo('coletor','nreg,dia,hora,hora_anterior,idturno,menuid,anulado,oee_operador,conjunto,problema,solucao,observacao,item',null,'nreg',(a,t)=>status('Carregando '+nf(a)+' de '+nf(t)+' registros…'));
+    const M={c:'conjunto',p:'problema',so:'solucao',ob:'observacao',it:'item'};
+    const out=[];let skip=0,prevH=null;
+    for(const r of rows){
+      const h=parseSec(r.hora),ha=parseSec(r.hora_anterior),d=r.dia;
+      if(h==null||ha==null||!d){skip++;continue}
+      const s=h-ha;
+      const rs=ha===21600&&prevH!==21600;prevH=h;
+      const sys=String(r.menuid)==='99999';
+      const t=r.idturno==null?'?':String(r.idturno);
+      const av=r.anulado;const a=av===1||av===true||['1','sim','s','true'].includes(norm(av));
+      const o=r.oee_operador==null?'':String(r.oee_operador).trim();
+      let x=null;for(const k in M){const v=r[M[k]];if(v!=null&&String(v).trim()!==''){x=x||{};x[k]=String(v).trim()}}
+      out.push({n:String(r.nreg),d,t,s,h,a,o,rs,sys,x});
+    }
+    BASE=out;SRC={kind:'file',label:'Dados do sistema',skip};PERIOD=null;PEND=null;run();
+  }catch(e){status('Erro ao carregar: '+e.message,true)}
+}
+$('#btnSistema').addEventListener('click',carregarDoSistema);
+carregarDoSistema();
+})();
+</script>
+
+</body>
+</html>

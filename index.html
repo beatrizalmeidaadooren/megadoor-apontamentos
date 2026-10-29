@@ -4,282 +4,590 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Apontamentos Megadoor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;background:#f2f4f5;color:#10161a;font-size:14px}
-  header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 18px;background:#fff;border-bottom:1px solid #ddd;flex-wrap:wrap}
-  h1{font-size:18px;margin:0}
-  main{padding:14px 18px}
-  nav button,.btn{border:1px solid #bbb;background:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
-  nav button.ativo{background:#1b8a5a;color:#fff;border-color:#1b8a5a}
-  .btn.primario{background:#1b8a5a;color:#fff;border-color:#1b8a5a}
-  .btn:disabled{opacity:.5;cursor:default}
-  .barra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
-  table{border-collapse:collapse;width:100%;background:#fff}
-  th,td{border-bottom:1px solid #e3e6e8;padding:6px 8px;text-align:left;vertical-align:middle}
-  th{font-size:11px;text-transform:uppercase;color:#5a656d}
-  select,input{font:inherit;padding:4px 6px;border:1px solid #bbb;border-radius:5px;max-width:260px}
-  .st{font-size:12px;padding:2px 8px;border-radius:99px;white-space:nowrap}
-  .pend{background:#fbe3d2;color:#8a3b10}.ok{background:#d8f0e1;color:#0a6b3a}.op{background:#e4ecfb;color:#1d4f91}.res{background:#eee;color:#444}
-  .card{background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:12px}
-  .muted{color:#6b7780;font-size:12px}
-  .barra-p{height:10px;background:#1b8a5a;border-radius:4px;display:inline-block}
-  #login{max-width:340px;margin:80px auto;background:#fff;padding:24px;border-radius:12px;border:1px solid #ddd}
-  #login input{display:block;width:100%;max-width:none;margin:6px 0 12px;box-sizing:border-box}
-  .erro{color:#b3261e;font-size:13px;min-height:18px}
-  [hidden]{display:none!important}
+:root{
+  --bg:#F2F4F3;--surface:#FFFFFF;--surface-2:#E7ECEA;--ink:#162027;--muted:#5A676D;--line:#D3DBD9;
+  --accent:#1D5E8A;--accent-ink:#FFFFFF;
+  --good:#17754A;--good-bg:#D9F0E2;--warn:#8A5E00;--warn-bg:#FBEBC2;--bad:#A8231B;--bad-bg:#F8DCD8;--empty:#ECEFEE;--info:#1D4F91;--info-bg:#E2EBF8;
+  --radius:10px;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0F1417;--surface:#172025;--surface-2:#202A30;--ink:#E3E9EB;--muted:#95A2A8;--line:#2B363C;
+    --accent:#74AEDA;--accent-ink:#0B1822;
+    --good:#72D29E;--good-bg:#153726;--warn:#F0C45A;--warn-bg:#3A2F10;--bad:#FF8C82;--bad-bg:#431E1B;--empty:#1B2429;--info:#9CC2F0;--info-bg:#1A2A3D;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans)}
+[hidden]{display:none!important}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 30px/1 var(--display);text-transform:uppercase;letter-spacing:.01em;margin:6px 0 0}
+h2{font:700 20px/1.1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0}
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 13.5px var(--sans);padding:8px 13px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.small{padding:4px 9px;font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:default}
+.btn:focus-visible,.tab:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{font:500 13px var(--sans);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);max-width:100%}
+input[type=date]{font-family:var(--mono)}
+.muted{color:var(--muted);font-size:12.5px}
+.erro{color:var(--bad);font-size:13px;font-weight:500;min-height:18px}
+.ok-msg{color:var(--good);font-size:13px;font-weight:500}
+
+/* login */
+.caixa{max-width:360px;margin:80px auto;background:var(--surface);padding:26px;border-radius:12px;border:1px solid var(--line)}
+.caixa label{display:block;font-size:13px;color:var(--muted);margin-top:10px}
+.caixa input{display:block;width:100%;margin-top:4px}
+.caixa .btn{margin-top:16px;width:100%;justify-content:center}
+
+/* app */
+.top{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;padding:18px 20px 14px;border-bottom:2px solid var(--ink);background:var(--surface)}
+.top .acoes{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;padding:0 20px;background:var(--surface)}
+.tab{appearance:none;background:none;border:0;padding:11px 14px;font:600 14px var(--sans);color:var(--muted);border-bottom:2.5px solid transparent;cursor:pointer;white-space:nowrap}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .cnt{font:500 11px var(--mono);background:var(--bad-bg);color:var(--bad);padding:2px 6px;border-radius:99px;margin-left:6px}
+main{padding:16px 20px 60px}
+.barra{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px}
+.barra label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.barra input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi b{display:block;font:700 28px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.scroll{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);max-height:70vh}
+table{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;width:100%}
+th{position:sticky;top:0;z-index:2;font:500 10.5px/1.2 var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);background:var(--surface);white-space:nowrap}
+th.mine{background:var(--info-bg);color:var(--info)}
+td{padding:6px 10px;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap;vertical-align:middle}
+td.num{font-family:var(--mono);font-size:12.5px;text-align:right}
+td.txt{white-space:normal;min-width:160px;max-width:300px}
+td.mine{background:color-mix(in srgb,var(--info-bg) 45%,transparent)}
+td select{max-width:210px}
+tr.salvando td{opacity:.6}
+.pill{font:600 11px/1 var(--sans);padding:4px 8px;border-radius:999px;white-space:nowrap;display:inline-block}
+.pill.pendente{background:var(--bad-bg);color:var(--bad)}
+.pill.apontado{background:var(--good-bg);color:var(--good)}
+.pill.turno_anterior{background:var(--warn-bg);color:var(--warn)}
+.pill.ignorada,.pill.na{background:var(--empty);color:var(--muted)}
+.pill.feita{background:var(--info-bg);color:var(--info)}
+.pag{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px;font-size:13px;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px}
+.aviso{background:var(--warn-bg);color:var(--warn);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:13px}
+.barra-p{height:9px;background:var(--accent);border-radius:4px;display:inline-block;min-width:2px}
+iframe.sub{width:100%;height:calc(100vh - 150px);border:0;background:var(--bg)}
+#salvoMsg{position:fixed;right:16px;bottom:16px;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+#salvoMsg.on{opacity:1}
+@media (max-width:700px){.top{padding:14px 16px}main{padding:12px 16px 50px}.tabs{padding:0 8px}}
 </style>
 </head>
 <body>
 
-<div id="login" hidden>
+<div id="login" class="caixa" hidden>
+  <div class="eyebrow">Megadoor</div>
   <h1>Entrar</h1>
   <p class="muted">Acesso restrito. Use o e-mail e a senha cadastrados.</p>
   <form id="formLogin">
-    <label>E-mail</label><input id="email" type="email" required autocomplete="username">
-    <label>Senha</label><input id="senha" type="password" required autocomplete="current-password">
-    <button class="btn primario" type="submit">Entrar</button>
+    <label>E-mail<input id="email" type="email" required autocomplete="username"></label>
+    <label>Senha<input id="senha" type="password" required autocomplete="current-password"></label>
+    <button class="btn primary" type="submit">Entrar</button>
     <div id="erroLogin" class="erro"></div>
   </form>
 </div>
 
-<div id="painelSenha" hidden>
-  <div id="login" style="margin:80px auto">
+<div id="painelSenha" class="caixa" hidden>
+  <div class="eyebrow">Megadoor</div>
   <h1>Defina sua senha</h1>
   <p class="muted">Escolha uma senha para entrar no sistema.</p>
   <form id="formSenha">
-    <label>Nova senha (mínimo 8 caracteres)</label><input id="senhaNova" type="password" minlength="8" required autocomplete="new-password">
-    <label>Repita a senha</label><input id="senhaNova2" type="password" minlength="8" required autocomplete="new-password">
-    <button class="btn primario" type="submit">Salvar senha</button>
+    <label>Nova senha (mínimo 8 caracteres)<input id="senhaNova" type="password" minlength="8" required autocomplete="new-password"></label>
+    <label>Repita a senha<input id="senhaNova2" type="password" minlength="8" required autocomplete="new-password"></label>
+    <button class="btn primary" type="submit">Salvar senha</button>
     <div id="erroSenha" class="erro"></div>
   </form>
-  </div>
 </div>
 
 <div id="app" hidden>
-  <header>
-    <div><h1>Apontamentos Megadoor</h1><div class="muted" id="quem"></div></div>
-    <div class="barra"><span class="muted" id="modo"></span><button class="btn" id="sair">Sair</button></div>
-  </header>
-  <main>
-    <div class="barra">
-      <nav>
-        <button id="abaParadas" class="ativo">Paradas</button>
-        <button id="abaPareto">Divergências</button>
-      </nav>
-      <label>De <input type="date" id="ini"></label>
-      <label>até <input type="date" id="fim"></label>
-      <button class="btn" id="atualizar">Atualizar</button>
-      <span class="muted" id="resumo"></span>
+  <header class="top">
+    <div>
+      <div class="eyebrow">Megadoor · TPM</div>
+      <h1>Apontamentos Megadoor</h1>
+      <div class="muted"><span id="quem"></span> · <span id="modo"></span></div>
     </div>
+    <div class="acoes">
+      <span class="muted" id="backupMsg"></span>
+      <button class="btn" id="btnBackup" type="button" title="Baixa um Excel com todos os dados do sistema">Baixar backup (Excel)</button>
+      <button class="btn" id="sair" type="button">Sair</button>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-aba="apont" aria-selected="true">Apontamentos</button>
+    <button class="tab" role="tab" data-aba="pend" aria-selected="false">Pendências<span class="cnt" id="cntPend" hidden></span></button>
+    <button class="tab" role="tab" data-aba="radar" aria-selected="false">Radar</button>
+    <button class="tab" role="tab" data-aba="diverg" aria-selected="false">Divergências</button>
+  </nav>
+  <main>
     <div id="msg" class="erro"></div>
-    <section id="secParadas"><div class="card" style="padding:0;overflow:auto"><table id="tabela"></table></div></section>
-    <section id="secPareto" hidden><div class="card" id="pareto"></div></section>
+    <div id="avisoTabelas" class="aviso" hidden>As tabelas de classificação (programadas e subgrupos) ainda estão vazias no sistema. Rode o <b>sincronizar_megadoor.py</b> uma vez no seu computador para carregá-las.</div>
+
+    <!-- APONTAMENTOS -->
+    <section id="sec-apont">
+      <div class="barra">
+        <label>De <input type="date" id="ini"></label>
+        <label>até <input type="date" id="fim"></label>
+        <button class="btn small" id="atualizar" type="button">Atualizar</button>
+        <label><input type="checkbox" id="soTakt" checked> Só paradas acima do takt (170 s)</label>
+        <label><input type="checkbox" id="semSistema" checked> Ocultar registros de sistema e reinício do coletor</label>
+        <label>Turno <select id="fTurno"><option value="">Todos</option><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
+        <label>Operador <select id="fOper"><option value="">Todas</option><option value="pendente">Pendente</option><option value="apontado">Apontado</option><option value="turno_anterior">Turno anterior não preencheu</option><option value="ignorada">Ignorada</option></select></label>
+        <label>Minha classificação <select id="fMinha"><option value="">Todas</option><option value="falta">Falta classificar</option><option value="feita">Classificada</option></select></label>
+        <label>Buscar <input type="search" id="fBusca" placeholder="texto ou registro" style="width:150px"></label>
+        <span class="muted" id="resumo"></span>
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="scroll"><table id="tabela"></table></div>
+      <div class="pag" id="pag"></div>
+    </section>
+
+    <!-- PENDÊNCIAS -->
+    <section id="sec-pend" hidden>
+      <div class="card">
+        <h2>Pendências do operador</h2>
+        <p class="muted" style="margin:6px 0 0;max-width:80ch">Paradas acima de 170 s, de qualquer data, que ainda não têm apontamento do operador. Saem desta lista quando o operador apontar (na próxima sincronização) ou quando você clicar em Ignorar. "Turno anterior não preencheu" conta como resolvida.</p>
+      </div>
+      <div class="barra">
+        <label>Turno <select id="pTurno"><option value="">Todos</option><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
+        <label>Até a data <input type="date" id="pAte"></label>
+        <span class="muted" id="pResumo"></span>
+        <button class="btn small" id="pIgnorarSel" type="button" hidden>Ignorar as selecionadas</button>
+        <button class="btn small" id="pVerIgnoradas" type="button">Ver ignoradas</button>
+      </div>
+      <div class="kpis" id="pKpis"></div>
+      <div class="scroll"><table id="pTabela"></table></div>
+    </section>
+
+    <!-- RADAR -->
+    <section id="sec-radar" hidden>
+      <iframe class="sub" id="frRadar" title="Radar de Apontamentos"></iframe>
+    </section>
+
+    <!-- DIVERGÊNCIAS -->
+    <section id="sec-diverg" hidden>
+      <div class="barra">
+        <span class="muted">Usa o mesmo período da aba Apontamentos:</span>
+        <span id="dPeriodo" class="muted"></span>
+      </div>
+      <div class="card" id="pareto"></div>
+    </section>
   </main>
 </div>
+<div id="salvoMsg"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="comum.js"></script>
 <script>
 (function () {
-  const SUPABASE_URL = 'https://bdohqikuaoxlhjwexlqd.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkb2hxaWt1YW94bGhqd2V4bHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxOTEzMzUsImV4cCI6MjEwODc2NzMzNX0.TNJ7zQwTDi1XddJ6MHQ7qA1WzTHfbR26RpIQqnAnbyM';
-  const DONA = 'beatriz.almeida@adooren.com';
-  const LIMITE = 170;
+  const sb = MG.sb;
+  const TAKT = 170, NOMINAL = 85;
   const TIPO_LINK = new URLSearchParams(location.hash.slice(1)).get('type');
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const TURNO = {1:'A', 2:'B', 3:'C'};
+  const pad = n => String(n).padStart(2, '0');
+  const hojeISO = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  const dBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
+  const nf = n => Number(n).toLocaleString('pt-BR');
+  const n1 = n => n == null ? '' : Number(n).toLocaleString('pt-BR', {maximumFractionDigits: 1});
 
-  // Texto do operador (coluna OEE) -> subgrupo novo
+  // Texto do operador (coluna OEE) -> subgrupo novo, para comparar
   const OPER_MAP = {'outros…': 'Outros', 'outros...': 'Outros', 'outros': 'Outros', 'pequena parada': 'Pequena parada',
-    'quebra de máquina': 'Quebra de Máquina', 'troca da linha de usinagem': 'Ajuste de ferragem',
-    'falha operaciona': 'Outros', 'falha operacional': 'Outros', 'alimentação de peças na megadoor': 'Pequena parada'};
-  const NAO_APONTOU = 'turno anterior não preencheu';
+    'quebra de maquina': 'Quebra de Máquina', 'troca da linha de usinagem': 'Ajuste de ferragem',
+    'falha operaciona': 'Outros', 'falha operacional': 'Outros', 'alimentacao de pecas na megadoor': 'Pequena parada'};
 
-  let S = {subgrupos: [], programadas: [], legado: {}, classif: {}, pend: {}, linhas: [], user: null, dona: false};
+  let S = {sess: null, dona: false, linhas: [], classif: {}, pend: {}, subgrupos: [], programadas: [], legado: {},
+    pagina: 0, aba: 'apont', pendTodas: [], verIgnoradas: false};
 
   function mostrar(qual) {
     $('login').hidden = qual !== 'login';
     $('app').hidden = qual !== 'app';
     $('painelSenha').hidden = qual !== 'senha';
   }
+  let tAviso;
+  function aviso(txt) { const e = $('salvoMsg'); e.textContent = txt; e.classList.add('on'); clearTimeout(tAviso); tAviso = setTimeout(() => e.classList.remove('on'), 1800); }
 
-  function operNorm(texto) {
-    if (texto == null) return null;
-    const t = String(texto).trim();
-    if (!t || t === '00:00:00' || t === ' ' || /^1900-/.test(t)) return null;
+  /* ---------- regras ---------- */
+  function operTexto(v) {
+    if (v == null) return '';
+    const t = String(v).trim();
+    if (!t || t === '00:00:00' || /^1900-/.test(t)) return '';
     return t;
   }
-
-  function subgrupoNovo(s) {
-    if (!s) return null;
-    if (S.legado[s]) return S.legado[s];
-    return s;
-  }
-
-  function statusDe(l) {
-    const c = S.classif[l.nreg];
-    if (c && c.subgrupo) return 'classificada';
+  const ehTA = t => norm(t).startsWith('turno anterior');
+  function ehSistema(l) { return l.menuid === 99999 || l.hora_anterior === '06:00:00'; }
+  function sitOperador(l) {
+    if (l.t_ciclo_s == null || l.t_ciclo_s <= TAKT) return 'na';
+    const o = operTexto(l.oee_operador);
+    if (o && ehTA(o)) return 'turno_anterior';
+    if (o) return 'apontado';
     const p = S.pend[l.nreg];
     if (p && p.status === 'ignorada') return 'ignorada';
-    const op = operNorm(l.oee_operador);
-    if (op && norm(op) === norm(NAO_APONTOU)) return 'resolvida';
-    if (op) return 'operador';
     return 'pendente';
   }
+  const ROT_OP = {pendente: 'Pendente', apontado: 'Apontado', turno_anterior: 'Turno anterior não preencheu', ignorada: 'Ignorada', na: '—'};
+  const naoProgramada = p => norm(p) === 'nao programada';
+  const subsNP = () => S.subgrupos.filter(s => s.grupo);
+  function subDe(nome) { return S.subgrupos.find(s => s.subgrupo === nome) || null; }
+  function legado(s) { return s && S.legado[s] ? S.legado[s] : s; }
 
-  const ROTULO = {classificada:['ok','Classificada'], operador:['op','Só operador'], pendente:['pend','Pendente'],
-    resolvida:['res','Turno não apontou'], ignorada:['res','Ignorada']};
-
-  function grupoDe(subgrupo) {
-    const r = S.subgrupos.find(x => x.subgrupo === subgrupo);
-    return r ? r : {grupo: null, seis_perdas: null};
+  /* ---------- carga ---------- */
+  async function carregarApoio() {
+    const [cls, sub, prog, leg, pen] = await Promise.all([
+      MG.buscarTudo('classificacao', '*'), sb.from('subgrupos').select('*'),
+      sb.from('programadas').select('*'), sb.from('legado_mapa').select('*'), MG.buscarTudo('pendencias', '*')
+    ]);
+    for (const r of [sub, prog, leg]) if (r.error) throw new Error(r.error.message);
+    S.classif = {}; cls.forEach(c => S.classif[c.nreg] = c);
+    S.pend = {}; pen.forEach(p => S.pend[p.nreg] = p);
+    S.subgrupos = (sub.data || []).filter(s => s.ativo !== false);
+    S.programadas = prog.data || [];
+    S.legado = {}; (leg.data || []).forEach(x => S.legado[x.antigo] = x.novo);
+    $('avisoTabelas').hidden = S.programadas.length > 0 && S.subgrupos.length > 0;
   }
 
   async function carregar() {
     $('msg').textContent = '';
-    $('resumo').textContent = 'Carregando...';
-    const ini = $('ini').value, fim = $('fim').value;
-    let q = sb.from('coletor').select('nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,oee_operador,conjunto,problema,solucao,observacao,item')
-      .gt('t_ciclo_s', LIMITE).order('data_hora', {ascending: false}).limit(3000);
-    if (ini) q = q.gte('dia', ini);
-    if (fim) q = q.lte('dia', fim);
-    const [col, cls, sub, prog, leg, pen] = await Promise.all([
-      q, sb.from('classificacao').select('*'), sb.from('subgrupos').select('*'),
-      sb.from('programadas').select('*'), sb.from('legado_mapa').select('*'), sb.from('pendencias').select('*')
-    ]);
-    const erro = [col, cls, sub, prog, leg, pen].find(r => r.error);
-    if (erro) { $('msg').textContent = 'Erro ao carregar: ' + erro.error.message; $('resumo').textContent = ''; return; }
-    S.linhas = (col.data || []).filter(l => l.menuid !== 99999 && l.hora_anterior !== '06:00:00');
-    S.classif = {}; cls.data.forEach(c => S.classif[c.nreg] = c);
-    S.pend = {}; pen.data.forEach(p => S.pend[p.nreg] = p);
-    S.subgrupos = sub.data || []; S.programadas = prog.data || [];
-    S.legado = {}; leg.data.forEach(x => S.legado[x.antigo] = x.novo);
-    renderParadas();
-    renderPareto();
-  }
-
-  function contagens() {
-    const c = {pendente: 0, operador: 0, classificada: 0, resolvida: 0, ignorada: 0};
-    S.linhas.forEach(l => c[statusDe(l)]++);
-    return c;
-  }
-
-  function renderParadas() {
-    const c = contagens();
-    $('resumo').textContent = `${S.linhas.length} paradas acima de ${LIMITE}s · ${c.pendente} pendentes`;
-    const subs = S.subgrupos.map(s => `<option value="${esc(s.subgrupo)}">${esc(s.subgrupo)}</option>`).join('');
-    const progs = S.programadas.map(p => `<option value="${esc(p.programada)}">${esc(p.programada)}</option>`).join('');
-    let h = `<thead><tr><th>Data/hora</th><th>Turno</th><th>Ciclo (s)</th><th>Operador</th><th>Status</th>
-      <th>Programada</th><th>Subgrupo</th><th>Grupo / 6 Grandes Perdas</th><th></th></tr></thead><tbody>`;
-    S.linhas.slice(0, 500).forEach(l => {
-      const st = statusDe(l), [cl, tx] = ROTULO[st];
-      const c0 = S.classif[l.nreg] || {};
-      const op = operNorm(l.oee_operador) || '—';
-      const turno = {1:'A',2:'B',3:'C'}[l.idturno] || l.idturno;
-      const editavel = S.dona ? '' : 'disabled';
-      h += `<tr data-n="${l.nreg}">
-        <td>${esc(l.data_hora)}</td><td>${esc(turno)}</td><td>${esc(l.t_ciclo_s)}</td>
-        <td>${esc(op)}</td><td><span class="st ${cl}">${tx}</span></td>
-        <td><select class="prog" ${editavel}><option value="">—</option>${progs}</select></td>
-        <td><select class="sub" ${editavel}><option value="">—</option>${subs}</select></td>
-        <td class="grp muted">${esc(c0.grupo ? c0.grupo + ' / ' + c0.seis_perdas : '')}</td>
-        <td>${S.dona ? `<button class="btn salvar">Salvar</button> ${st === 'pendente' ? '<button class="btn ignorar">Ignorar</button>' : ''}` : ''}</td>
-      </tr>`;
-    });
-    h += '</tbody>';
-    $('tabela').innerHTML = h;
-    // preenche valores atuais
-    $('tabela').querySelectorAll('tr[data-n]').forEach(tr => {
-      const n = tr.dataset.n, c0 = S.classif[n];
-      if (c0) {
-        tr.querySelector('.prog').value = c0.programada || '';
-        tr.querySelector('.sub').value = c0.subgrupo || '';
-      }
-    });
-    if (S.dona) {
-      $('tabela').querySelectorAll('.sub').forEach(sel => sel.addEventListener('change', () => {
-        const g = grupoDe(sel.value);
-        sel.closest('tr').querySelector('.grp').textContent = g.grupo ? g.grupo + ' / ' + g.seis_perdas : '';
-      }));
-      $('tabela').querySelectorAll('.salvar').forEach(b => b.addEventListener('click', () => salvar(b.closest('tr'))));
-      $('tabela').querySelectorAll('.ignorar').forEach(b => b.addEventListener('click', () => ignorar(b.closest('tr'))));
+    $('resumo').textContent = 'Carregando…';
+    try {
+      const ini = $('ini').value, fim = $('fim').value, so = $('soTakt').checked;
+      const [linhas] = await Promise.all([
+        MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,anulado,oee_operador,conjunto,problema,solucao,observacao,item',
+          q => { if (ini) q = q.gte('dia', ini); if (fim) q = q.lte('dia', fim); if (so) q = q.gt('t_ciclo_s', TAKT); return q; },
+          'nreg', (a, t) => { $('resumo').textContent = `Carregando ${nf(a)} de ${nf(t)}…`; }),
+        carregarApoio()
+      ]);
+      S.linhas = linhas.reverse();
+      S.pagina = 0;
+      renderApont();
+      renderPareto();
+      carregarPendencias();
+    } catch (e) {
+      $('msg').textContent = 'Erro ao carregar: ' + e.message;
+      $('resumo').textContent = '';
     }
   }
 
-  async function salvar(tr) {
+  /* ---------- aba Apontamentos ---------- */
+  function filtradas() {
+    const t = $('fTurno').value, o = $('fOper').value, m = $('fMinha').value, b = norm($('fBusca').value), ss = $('semSistema').checked;
+    return S.linhas.filter(l => {
+      if (ss && ehSistema(l)) return false;
+      if (t && String(l.idturno) !== t) return false;
+      if (o && sitOperador(l) !== o) return false;
+      const c = S.classif[l.nreg];
+      if (m === 'feita' && !(c && c.programada)) return false;
+      if (m === 'falta' && (c && c.programada)) return false;
+      if (b) {
+        const txt = norm([l.nreg, l.oee_operador, l.conjunto, l.problema, l.solucao, l.observacao, l.item, c && c.programada, c && c.subgrupo].join(' '));
+        if (!txt.includes(b)) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderApont() {
+    const L = filtradas();
+    const acima = L.filter(l => l.t_ciclo_s > TAKT);
+    const cont = {pendente: 0, apontado: 0, turno_anterior: 0, ignorada: 0};
+    acima.forEach(l => { const s = sitOperador(l); if (s in cont) cont[s]++; });
+    const minhas = acima.filter(l => S.classif[l.nreg] && S.classif[l.nreg].programada).length;
+    $('kpis').innerHTML = `
+      <div class="kpi"><span>Paradas acima de ${TAKT} s</span><b>${nf(acima.length)}</b></div>
+      <div class="kpi"><span>Apontadas pelo operador</span><b>${nf(cont.apontado)}</b></div>
+      <div class="kpi"><span>Turno anterior não preencheu</span><b>${nf(cont.turno_anterior)}</b></div>
+      <div class="kpi"><span>Pendentes</span><b style="color:var(--bad)">${nf(cont.pendente)}</b></div>
+      <div class="kpi"><span>Classificadas por você</span><b style="color:var(--info)">${nf(minhas)}</b></div>`;
+    $('resumo').textContent = `${nf(L.length)} registros no filtro`;
+
+    const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
+    if (S.pagina >= tot) S.pagina = tot - 1;
+    const pag = L.slice(S.pagina * POR, S.pagina * POR + POR);
+    const progOpts = S.programadas.map(p => `<option>${esc(p.programada)}</option>`).join('');
+    const subOpts = subsNP().map(s => `<option>${esc(s.subgrupo)}</option>`).join('');
+    const ed = S.dona ? '' : 'disabled';
+
+    let h = `<thead><tr><th>Registro</th><th>Data e hora</th><th>Turno</th><th>H anterior</th><th>Hora</th>
+      <th>T ciclo</th><th>T perdido</th><th>Fora do takt</th><th>Kits perdidos</th>
+      <th class="mine">Programada</th><th class="mine">Grupo do OEE</th><th class="mine">6 Grandes Perdas</th><th class="mine">Subgrupo do OEE</th>
+      <th>OEE Operador</th><th>Situação</th><th>Conjunto</th><th>Item</th><th>Problema</th><th>Solução</th><th>Observações</th></tr></thead><tbody>`;
+    for (const l of pag) {
+      const c = S.classif[l.nreg] || {};
+      const sit = sitOperador(l);
+      const tc = l.t_ciclo_s;
+      const fora = tc != null ? tc - TAKT : null;
+      const np = naoProgramada(c.programada);
+      let acao = '';
+      if (S.dona && sit === 'pendente') acao = ` <button class="btn small ign" type="button">Ignorar</button>`;
+      if (S.dona && sit === 'ignorada') acao = ` <button class="btn small desf" type="button">Desfazer</button>`;
+      h += `<tr data-n="${l.nreg}">
+        <td class="num">${l.nreg}</td><td class="num">${esc((l.data_hora || '').slice(0, 19).replace('T', ' '))}</td>
+        <td>${esc(TURNO[l.idturno] || l.idturno || '')}</td><td class="num">${esc(l.hora_anterior || '')}</td><td class="num">${esc(l.hora || '')}</td>
+        <td class="num">${tc == null ? '' : nf(tc)}</td><td class="num">${tc == null ? '' : nf(tc - NOMINAL)}</td>
+        <td class="num">${fora == null ? '' : nf(fora)}</td><td class="num">${fora == null ? '' : n1(fora / NOMINAL)}</td>
+        <td class="mine"><select class="prog" ${ed}><option value=""></option>${progOpts}</select></td>
+        <td class="mine grp">${esc(c.grupo || '')}</td><td class="mine seis">${esc(c.seis_perdas || '')}</td>
+        <td class="mine">${np ? `<select class="sub" ${ed}><option value=""></option>${subOpts}</select>` : `<span class="subtx">${esc(c.subgrupo || '')}</span>`}</td>
+        <td>${esc(operTexto(l.oee_operador))}</td>
+        <td><span class="pill ${sit}">${ROT_OP[sit]}</span>${acao}</td>
+        <td class="txt">${esc(l.conjunto || '')}</td><td class="txt">${esc(l.item || '')}</td><td class="txt">${esc(l.problema || '')}</td>
+        <td class="txt">${esc(l.solucao || '')}</td><td class="txt">${esc(l.observacao || '')}</td></tr>`;
+    }
+    h += '</tbody>';
+    if (!pag.length) h = '<tbody><tr><td class="muted" style="padding:18px">Nenhum registro com esses filtros.</td></tr></tbody>';
+    $('tabela').innerHTML = h;
+    $('tabela').querySelectorAll('tr[data-n]').forEach(tr => {
+      const c = S.classif[tr.dataset.n];
+      if (!c) return;
+      const p = tr.querySelector('.prog'); if (p) { p.value = c.programada || ''; if (c.programada && p.value !== c.programada) { p.insertAdjacentHTML('beforeend', `<option>${esc(c.programada)}</option>`); p.value = c.programada; } }
+      const s = tr.querySelector('.sub'); if (s) { s.value = c.subgrupo || ''; if (c.subgrupo && s.value !== c.subgrupo) { s.insertAdjacentHTML('beforeend', `<option>${esc(c.subgrupo)}</option>`); s.value = c.subgrupo; } }
+    });
+    $('pag').innerHTML = `Página ${S.pagina + 1} de ${tot}
+      <button class="btn small" id="pgAnt" ${S.pagina === 0 ? 'disabled' : ''}>Anterior</button>
+      <button class="btn small" id="pgProx" ${S.pagina >= tot - 1 ? 'disabled' : ''}>Próxima</button>`;
+    $('pgAnt').onclick = () => { S.pagina--; renderApont(); };
+    $('pgProx').onclick = () => { S.pagina++; renderApont(); };
+  }
+
+  async function salvarLinha(tr) {
     const nreg = Number(tr.dataset.n);
     const programada = tr.querySelector('.prog').value;
-    const subgrupo = tr.querySelector('.sub').value;
-    const prog = S.programadas.find(p => p.programada === programada);
-    if (!programada) { $('msg').textContent = 'Escolha a programada.'; return; }
-    if (prog && prog.exige_grupo && !subgrupo) { $('msg').textContent = 'Escolha o subgrupo.'; return; }
-    const g = prog && prog.exige_grupo ? grupoDe(subgrupo) : {grupo: null, seis_perdas: null};
-    const {error} = await sb.from('classificacao').upsert({
-      nreg, programada, subgrupo: subgrupo || null, grupo: g.grupo, seis_perdas: g.seis_perdas,
-      atualizado_por: S.user.email, atualizado_em: new Date().toISOString()
-    }, {onConflict: 'nreg'});
+    const selSub = tr.querySelector('.sub');
+    if (!programada) {
+      if (!S.classif[nreg]) return;
+      tr.classList.add('salvando');
+      const {error} = await sb.from('classificacao').delete().eq('nreg', nreg);
+      tr.classList.remove('salvando');
+      if (error) { $('msg').textContent = 'Erro ao apagar: ' + error.message; return; }
+      delete S.classif[nreg]; aviso('Classificação removida'); renderApont(); renderPareto(); return;
+    }
+    let reg;
+    if (naoProgramada(programada)) {
+      const sub = selSub ? selSub.value : '';
+      if (!sub) { renderApontLinhaProg(tr, programada); return; }
+      const s = subDe(sub) || {};
+      reg = {nreg, programada, subgrupo: sub, grupo: s.grupo || null, seis_perdas: s.seis_perdas || null};
+    } else {
+      const s = subDe(programada);
+      reg = {nreg, programada, subgrupo: s ? programada : '-', grupo: '-', seis_perdas: '-'};
+    }
+    reg.atualizado_por = S.sess.user.email; reg.atualizado_em = new Date().toISOString();
+    tr.classList.add('salvando');
+    const {error} = await sb.from('classificacao').upsert(reg, {onConflict: 'nreg'});
+    tr.classList.remove('salvando');
     if (error) { $('msg').textContent = 'Erro ao salvar: ' + error.message; return; }
-    $('msg').textContent = '';
-    await carregar();
+    S.classif[nreg] = reg; aviso('Salvo'); renderApont(); renderPareto();
+  }
+  // Programada "Não programada" escolhida, ainda sem subgrupo: mostra a lista de subgrupos nesta linha.
+  function renderApontLinhaProg(tr, programada) {
+    const cel = tr.querySelector('.subtx');
+    if (cel) {
+      const subOpts = subsNP().map(s => `<option>${esc(s.subgrupo)}</option>`).join('');
+      cel.outerHTML = `<select class="sub"><option value=""></option>${subOpts}</select>`;
+    }
+    tr.querySelector('.grp').textContent = ''; tr.querySelector('.seis').textContent = '';
+    aviso('Escolha o subgrupo para salvar');
   }
 
-  async function ignorar(tr) {
-    const nreg = Number(tr.dataset.n);
-    const {error} = await sb.from('pendencias').upsert({nreg, status: 'ignorada', resolvido_em: new Date().toISOString()}, {onConflict: 'nreg'});
-    if (error) { $('msg').textContent = 'Erro: ' + error.message; return; }
-    await carregar();
+  async function marcarIgnorada(nreg, ignorar) {
+    const reg = ignorar ? {nreg, status: 'ignorada', resolvido_em: new Date().toISOString()} : null;
+    const r = ignorar ? await sb.from('pendencias').upsert(reg, {onConflict: 'nreg'}) : await sb.from('pendencias').delete().eq('nreg', nreg);
+    if (r.error) { $('msg').textContent = 'Erro: ' + r.error.message; return false; }
+    if (ignorar) S.pend[nreg] = reg; else delete S.pend[nreg];
+    return true;
   }
 
+  $('tabela').addEventListener('change', e => {
+    const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
+    if (e.target.classList.contains('prog') || e.target.classList.contains('sub')) salvarLinha(tr);
+  });
+  $('tabela').addEventListener('click', async e => {
+    const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
+    if (e.target.classList.contains('ign')) { if (await marcarIgnorada(Number(tr.dataset.n), true)) { aviso('Ignorada'); renderApont(); renderPend(); } }
+    if (e.target.classList.contains('desf')) { if (await marcarIgnorada(Number(tr.dataset.n), false)) { aviso('Voltou para pendente'); renderApont(); renderPend(); } }
+  });
+
+  /* ---------- aba Pendências (todas as datas) ---------- */
+  async function carregarPendencias() {
+    try {
+      S.pendTodas = (await MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,oee_operador,observacao',
+        q => q.gt('t_ciclo_s', TAKT))).filter(l => !ehSistema(l));
+      renderPend();
+    } catch (e) { $('msg').textContent = 'Erro ao carregar pendências: ' + e.message; }
+  }
+  function renderPend() {
+    const t = $('pTurno').value, ate = $('pAte').value;
+    const alvo = S.verIgnoradas ? 'ignorada' : 'pendente';
+    const todas = S.pendTodas.filter(l => sitOperador(l) === 'pendente');
+    $('cntPend').hidden = !todas.length; $('cntPend').textContent = nf(todas.length);
+    const L = S.pendTodas.filter(l => sitOperador(l) === alvo && (!t || String(l.idturno) === t) && (!ate || l.dia <= ate));
+    const porT = {1: 0, 2: 0, 3: 0};
+    todas.forEach(l => { if (l.idturno in porT) porT[l.idturno]++; });
+    $('pKpis').innerHTML = `<div class="kpi"><span>Pendentes (todas as datas)</span><b style="color:var(--bad)">${nf(todas.length)}</b></div>` +
+      [1, 2, 3].map(k => `<div class="kpi"><span>Turno ${TURNO[k]}</span><b>${nf(porT[k])}</b></div>`).join('');
+    $('pResumo').textContent = `${nf(L.length)} ${S.verIgnoradas ? 'ignoradas' : 'pendentes'} no filtro` + (L.length > 1000 ? ' · mostrando as 1.000 mais antigas' : '');
+    $('pVerIgnoradas').textContent = S.verIgnoradas ? 'Ver pendentes' : 'Ver ignoradas';
+    $('pIgnorarSel').hidden = !S.dona || S.verIgnoradas;
+    let h = `<thead><tr>${S.dona ? '<th><input type="checkbox" id="pTodas" title="Selecionar todas"></th>' : ''}<th>Registro</th><th>Dia</th><th>Turno</th><th>H anterior</th><th>Hora</th><th>T ciclo (s)</th><th>Observações do coletor</th><th></th></tr></thead><tbody>`;
+    for (const l of L.slice(0, 1000)) {
+      h += `<tr data-n="${l.nreg}">${S.dona ? '<td><input type="checkbox" class="sel"></td>' : ''}<td class="num">${l.nreg}</td><td class="num">${dBR(l.dia)}</td><td>${esc(TURNO[l.idturno] || '')}</td>
+        <td class="num">${esc(l.hora_anterior || '')}</td><td class="num">${esc(l.hora || '')}</td><td class="num">${nf(l.t_ciclo_s)}</td>
+        <td class="txt">${esc(l.observacao || '')}</td>
+        <td>${S.dona ? (S.verIgnoradas ? '<button class="btn small desf" type="button">Desfazer</button>' : '<button class="btn small ign" type="button">Ignorar</button>') : ''}</td></tr>`;
+    }
+    h += '</tbody>';
+    if (!L.length) h = `<tbody><tr><td class="muted" style="padding:18px">${S.verIgnoradas ? 'Nenhuma parada ignorada.' : 'Nenhuma pendência com esses filtros.'}</td></tr></tbody>`;
+    $('pTabela').innerHTML = h;
+    const tod = $('pTodas'); if (tod) tod.onchange = () => $('pTabela').querySelectorAll('.sel').forEach(c => c.checked = tod.checked);
+  }
+  $('pTabela').addEventListener('click', async e => {
+    const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
+    if (e.target.classList.contains('ign')) { if (await marcarIgnorada(Number(tr.dataset.n), true)) { aviso('Ignorada'); renderPend(); renderApont(); } }
+    if (e.target.classList.contains('desf')) { if (await marcarIgnorada(Number(tr.dataset.n), false)) { aviso('Voltou para pendente'); renderPend(); renderApont(); } }
+  });
+  $('pIgnorarSel').addEventListener('click', async () => {
+    const ns = [...$('pTabela').querySelectorAll('.sel:checked')].map(c => Number(c.closest('tr').dataset.n));
+    if (!ns.length) { aviso('Nenhuma selecionada'); return; }
+    if (!confirm(`Ignorar ${ns.length} pendência(s)? Você pode desfazer depois em "Ver ignoradas".`)) return;
+    const agora = new Date().toISOString();
+    const regs = ns.map(nreg => ({nreg, status: 'ignorada', resolvido_em: agora}));
+    for (let i = 0; i < regs.length; i += 500) {
+      const {error} = await sb.from('pendencias').upsert(regs.slice(i, i + 500), {onConflict: 'nreg'});
+      if (error) { $('msg').textContent = 'Erro: ' + error.message; return; }
+    }
+    regs.forEach(r => S.pend[r.nreg] = r);
+    aviso(`${ns.length} ignoradas`); renderPend(); renderApont();
+  });
+  $('pTurno').addEventListener('change', renderPend);
+  $('pAte').addEventListener('change', renderPend);
+  $('pVerIgnoradas').addEventListener('click', () => { S.verIgnoradas = !S.verIgnoradas; renderPend(); });
+
+  /* ---------- aba Divergências ---------- */
   function renderPareto() {
+    $('dPeriodo').textContent = ($('ini').value ? dBR($('ini').value) : 'início') + ' a ' + ($('fim').value ? dBR($('fim').value) : 'hoje');
     const cont = {};
-    let total = 0, iguais = 0;
+    let total = 0, iguais = 0, soMinha = 0, soOper = 0;
     S.linhas.forEach(l => {
+      if (l.t_ciclo_s == null || l.t_ciclo_s <= TAKT || ehSistema(l)) return;
       const c = S.classif[l.nreg];
-      const op = operNorm(l.oee_operador);
-      if (!c || !c.subgrupo || !op || norm(op) === norm(NAO_APONTOU)) return;
+      const op = operTexto(l.oee_operador);
+      const temMinha = c && c.programada;
+      const temOp = op && !ehTA(op);
+      if (temMinha && !temOp) { soMinha++; return; }
+      if (!temMinha && temOp) { soOper++; return; }
+      if (!temMinha || !temOp) return;
       total++;
-      const mine = subgrupoNovo(c.subgrupo);
-      const oper = OPER_MAP[norm(op)] || op;
+      const base = c.subgrupo && c.subgrupo !== '-' ? c.subgrupo : c.programada;
+      const mine = legado(base);
+      const oper = OPER_MAP[norm(op)] || legado(op);
       if (norm(mine) === norm(oper)) { iguais++; return; }
       const k = `${mine}  →  operador: ${oper}`;
       cont[k] = (cont[k] || 0) + 1;
     });
     const lista = Object.entries(cont).sort((a, b) => b[1] - a[1]);
-    const acum = lista.reduce((s, x) => s + x[1], 0);
+    const soma = lista.reduce((s, x) => s + x[1], 0);
     let acc = 0;
     const max = lista.length ? lista[0][1] : 1;
-    let h = `<h3 style="margin:0 0 6px">Divergências entre sua classificação e a do operador</h3>
-      <div class="muted">Comparadas ${total} paradas classificadas por você e apontadas pelo operador.
-      Coincidem: ${iguais} · Divergem: ${acum}. "Turno anterior não preencheu" não entra na comparação.</div>
-      <table style="margin-top:10px"><thead><tr><th>Divergência</th><th>Qtd</th><th>%</th><th>Acumulado</th><th></th></tr></thead><tbody>`;
+    let h = `<h2>Divergências entre a sua classificação e a do operador</h2>
+      <div class="kpis" style="margin-top:12px">
+        <div class="kpi"><span>Comparadas (os dois apontaram)</span><b>${nf(total)}</b></div>
+        <div class="kpi"><span>Coincidem</span><b style="color:var(--good)">${nf(iguais)}</b></div>
+        <div class="kpi"><span>Divergem</span><b style="color:var(--bad)">${nf(soma)}</b></div>
+        <div class="kpi"><span>Só você classificou</span><b>${nf(soMinha)}</b></div>
+        <div class="kpi"><span>Só o operador apontou</span><b>${nf(soOper)}</b></div>
+      </div>
+      <p class="muted">Subgrupos antigos são convertidos para os novos antes de comparar. "Turno anterior não preencheu" não entra na comparação.</p>
+      <div class="scroll" style="max-height:none"><table><thead><tr><th>Sua classificação → apontamento do operador</th><th>Qtd</th><th>%</th><th>Acumulado</th><th></th></tr></thead><tbody>`;
     lista.forEach(([k, v]) => {
       acc += v;
-      h += `<tr><td>${esc(k)}</td><td>${v}</td><td>${(v / acum * 100).toFixed(0)}%</td>
-        <td>${(acc / acum * 100).toFixed(0)}%</td><td><span class="barra-p" style="width:${Math.round(v / max * 180)}px"></span></td></tr>`;
+      h += `<tr><td>${esc(k)}</td><td class="num">${v}</td><td class="num">${(v / soma * 100).toFixed(0)}%</td>
+        <td class="num">${(acc / soma * 100).toFixed(0)}%</td><td><span class="barra-p" style="width:${Math.round(v / max * 200)}px"></span></td></tr>`;
     });
-    h += '</tbody></table>';
-    if (!lista.length) h += '<p class="muted">Ainda não há paradas suficientes classificadas para comparar.</p>';
+    h += '</tbody></table></div>';
+    if (!lista.length) h += '<p class="muted">Ainda não há paradas classificadas por você e apontadas pelo operador com divergência neste período.</p>';
     $('pareto').innerHTML = h;
   }
 
-  function trocarAba(qual) {
-    const paradas = qual === 'paradas';
-    $('secParadas').hidden = !paradas; $('secPareto').hidden = paradas;
-    $('abaParadas').classList.toggle('ativo', paradas); $('abaPareto').classList.toggle('ativo', !paradas);
+  /* ---------- backup ---------- */
+  async function baixarBackup() {
+    const b = $('btnBackup'); b.disabled = true;
+    const m = $('backupMsg');
+    try {
+      m.textContent = 'Lendo dados…';
+      const [col] = await Promise.all([
+        MG.buscarTudo('coletor', '*', null, 'nreg', (a, t) => { m.textContent = `Lendo coletor ${nf(a)} de ${nf(t)}…`; }),
+        carregarApoio()
+      ]);
+      m.textContent = 'Montando o Excel…';
+      await new Promise(r => setTimeout(r, 30));
+      const apont = col.map(l => {
+        const c = S.classif[l.nreg] || {};
+        const tc = l.t_ciclo_s, dt = l.data_hora ? new Date(l.data_hora.replace(' ', 'T')) : null;
+        return {
+          'REGISTRO': l.nreg, 'DATA E HORA': dt, 'DATA': l.dia ? new Date(l.dia + 'T00:00:00') : null,
+          'DIA': dt ? dt.getDate() : null, 'MÊS': dt ? dt.getMonth() + 1 : null, 'ANO': dt ? dt.getFullYear() : null,
+          'HORA': l.hora, 'H ANTERIOR': l.hora_anterior, 'T CICLO': tc, 'TURNO': l.idturno,
+          'T CICLO NOMINAL': NOMINAL, 'T PERDIDO': tc == null ? null : tc - NOMINAL, 'TAKT TIME': TAKT,
+          'FORA DO TAKT TIME': tc == null ? null : tc - TAKT, 'KITS PERDIDOS': tc == null ? null : (tc - TAKT) / NOMINAL,
+          'PROGRAMADA': c.programada || null, 'GRUPO DO OEE': c.grupo || null, '6 GRANDES PERDAS': c.seis_perdas || null,
+          'SUBGRUPO DO OEE': c.subgrupo || null, 'OEE Operador': l.oee_operador, 'SITUAÇÃO OPERADOR': ROT_OP[sitOperador(l)],
+          'CONJUNTO': l.conjunto, 'ITEM': l.item, 'PROBLEMA': l.problema, 'SOLUÇÃO': l.solucao, 'OBSERVAÇÕES': l.observacao
+        };
+      });
+      const wb = XLSX.utils.book_new();
+      const add = (nome, linhas) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas.length ? linhas : [{vazio: ''}]), nome);
+      add('Apontamentos', apont);
+      add('banco_dados', col);
+      add('classificacao', Object.values(S.classif));
+      add('pendencias', Object.values(S.pend));
+      add('subgrupos', S.subgrupos);
+      add('programadas', S.programadas);
+      add('legado_mapa', Object.entries(S.legado).map(([antigo, novo]) => ({antigo, novo})));
+      const d = new Date();
+      XLSX.writeFile(wb, `backup_megadoor_${hojeISO()}_${pad(d.getHours())}${pad(d.getMinutes())}.xlsx`, {compression: true});
+      m.textContent = 'Backup baixado.';
+    } catch (e) {
+      m.textContent = ''; $('msg').textContent = 'Erro no backup: ' + e.message;
+    } finally { b.disabled = false; }
   }
 
+  /* ---------- abas e login ---------- */
+  function trocarAba(qual) {
+    S.aba = qual;
+    document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === qual));
+    ['apont', 'pend', 'radar', 'diverg'].forEach(a => $('sec-' + a).hidden = a !== qual);
+    if (qual === 'radar' && !$('frRadar').src) $('frRadar').src = 'radar.html';
+  }
+  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => trocarAba(b.dataset.aba)));
+
   async function entrar(sess) {
-    S.user = sess.user;
-    S.dona = (sess.user.email || '').toLowerCase() === DONA;
+    S.sess = sess;
+    S.dona = MG.ehDona(sess);
     $('quem').textContent = sess.user.email;
     $('modo').textContent = S.dona ? 'Edição' : 'Somente leitura';
     mostrar('app');
-    const hoje = new Date();
-    const ini = new Date(hoje); ini.setDate(hoje.getDate() - 14);
-    $('ini').value = ini.toISOString().slice(0, 10);
-    $('fim').value = hoje.toISOString().slice(0, 10);
+    const hoje = new Date(), ini = new Date(hoje); ini.setDate(hoje.getDate() - 30);
+    $('ini').value = ini.getFullYear() + '-' + pad(ini.getMonth() + 1) + '-' + pad(ini.getDate());
+    $('fim').value = hojeISO();
     await carregar();
   }
 
@@ -290,10 +598,12 @@
     if (error) { $('erroLogin').textContent = 'E-mail ou senha incorretos.'; return; }
     entrar(data.session);
   });
-  $('sair').addEventListener('click', async () => { await sb.auth.signOut(); mostrar('login'); });
+  $('sair').addEventListener('click', async () => { await sb.auth.signOut(); location.reload(); });
   $('atualizar').addEventListener('click', carregar);
-  $('abaParadas').addEventListener('click', () => trocarAba('paradas'));
-  $('abaPareto').addEventListener('click', () => trocarAba('pareto'));
+  $('soTakt').addEventListener('change', carregar);
+  ['semSistema', 'fTurno', 'fOper', 'fMinha'].forEach(id => $(id).addEventListener('change', () => { S.pagina = 0; renderApont(); }));
+  let tBusca; $('fBusca').addEventListener('input', () => { clearTimeout(tBusca); tBusca = setTimeout(() => { S.pagina = 0; renderApont(); }, 250); });
+  $('btnBackup').addEventListener('click', baixarBackup);
 
   $('formSenha').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -306,7 +616,7 @@
   });
 
   sb.auth.getSession().then(({data}) => {
-    if (data.session && (TIPO_LINK === 'recovery' || TIPO_LINK === 'invite')) { S.user = data.session.user; mostrar('senha'); return; }
+    if (data.session && (TIPO_LINK === 'recovery' || TIPO_LINK === 'invite')) { S.sess = data.session; mostrar('senha'); return; }
     if (data.session) entrar(data.session); else mostrar('login');
   });
 })();
