@@ -41,7 +41,7 @@ window.MGPlanilha = (function () {
   // ---- leitura do sistema ----
   async function lerTudo(aoProgresso) {
     const p = aoProgresso || (() => {});
-    const [coletor, classif, montagem, limpeza, os, subgrupos, programadas] = await Promise.all([
+    const [coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes] = await Promise.all([
       MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,qnt,qntdefeito,anulado,oee_operador,conjunto,problema,solucao,observacao,item', null, 'nreg',
         (a, t) => p(`Lendo apontamentos da Megadoor: ${a.toLocaleString('pt-BR')} de ${t.toLocaleString('pt-BR')}`)),
       MG.buscarTudo('classificacao', '*'),
@@ -50,20 +50,26 @@ window.MGPlanilha = (function () {
       MG.buscarTudo('os', '*', null, 'id'),
       MG.sb.from('subgrupos').select('*').then(r => { if (r.error) throw r.error; return r.data; }),
       MG.sb.from('programadas').select('*').then(r => { if (r.error) throw r.error; return r.data; }),
-      MG.carregarTakt()
-    ]);
-    return { coletor, classif, montagem, limpeza, os, subgrupos, programadas };
+      MG.carregarTakt(),
+      MG.buscarTudo('ajustes', '*').catch(() => [])
+    ]).then(r => [...r.slice(0, 7), r[8]]);
+    return { coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes };
   }
 
   // ---- abas ----
   function abaApontamentos(d) {
     const cls = {}; d.classif.forEach(c => cls[c.nreg] = c);
+    const aj = {}; (d.ajustes || []).forEach(a => aj[a.nreg] = a);
+    const NOMES = { conjunto: 'CONJUNTO', item: 'ITEM', problema: 'PROBLEMA', solucao: 'SOLUÇÃO' };
     const cab = ['REGISTRO', 'DATA E HORA', 'DATA', 'DIA', 'MÊS', 'ANO', 'HORA', 'H ANTERIOR', 'T CICLO', 'TURNO', 'T CICLO NOMINAL',
       'T PERDIDO', 'TAKT TIME', 'FORA DO TAKT TIME', 'KITS PERDIDOS', 'PROGRAMADA', 'GRUPO DO EE', '6 GRANDES PERDAS', 'SUBGRUPO DO OEE',
-      'OEE Operador', 'CONJUNTO', 'ITEM', 'PROBLEMA', 'SOLUÇÃO', 'OBSERVAÇÕES', 'qnt', 'qntdefeito'];
+      'OEE Operador', 'CONJUNTO', 'ITEM', 'PROBLEMA', 'SOLUÇÃO', 'OBSERVAÇÕES', 'qnt', 'qntdefeito', 'MINHAS OBSERVAÇÕES', 'PREENCHIDO POR MIM'];
     const linhas = [cab];
     for (const l of d.coletor) {
       const c = cls[l.nreg] || {};
+      const a = aj[l.nreg] || {};
+      const v = k => a[k] != null ? a[k] : l[k];
+      const meus = Object.keys(NOMES).filter(k => a[k] != null).map(k => NOMES[k]).join(', ');
       const tc = l.t_ciclo_s;
       const tk = MG.taktDe(l.dia || l.data_hora);
       const dia = l.dia || (l.data_hora ? String(l.data_hora).slice(0, 10) : null);
@@ -71,8 +77,8 @@ window.MGPlanilha = (function () {
       linhas.push([l.nreg, serialDataHora(l.data_hora), serialDia(dia), dd, m, y, fracHora(l.hora), fracHora(l.hora_anterior),
         tc, l.idturno, tk.nominal, tc == null ? null : tc - tk.nominal, tk.takt, tc == null ? null : tc - tk.takt,
         tc == null ? null : (tc - tk.takt) / tk.nominal, c.programada || null, c.grupo || null, c.seis_perdas || null, c.subgrupo || null,
-        l.oee_operador, l.conjunto, l.item, l.problema, l.solucao, l.observacao,
-        l.qnt, l.qntdefeito != null ? l.qntdefeito : (l.qnt == null ? null : 0)]);
+        l.oee_operador, v('conjunto'), v('item'), v('problema'), v('solucao'), l.observacao,
+        l.qnt, l.qntdefeito != null ? l.qntdefeito : (l.qnt == null ? null : 0), a.obs || null, meus || null]);
     }
     const ws = XLSX.utils.aoa_to_sheet(linhas);
     marcarFormato(ws, linhas.length, [1], 'dd/mm/yyyy hh:mm:ss');
@@ -190,6 +196,7 @@ window.MGPlanilha = (function () {
       const add = (nome, linhas) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas.length ? linhas : [{ vazio: '' }]), nome);
       add('banco_dados', d.coletor);
       add('sis_classificacao', d.classif);
+      add('sis_ajustes', d.ajustes || []);
       add('sis_pendencias', d.pendencias || []);
       add('sis_limpeza', d.limpeza.map(r => ({ ...r, itens: (r.itens || []).map(x => x || '_').join(' ') })));
       add('sis_os', d.os);

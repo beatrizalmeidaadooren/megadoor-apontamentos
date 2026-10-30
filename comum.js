@@ -10,7 +10,7 @@ window.MG = (function () {
   const linkTipo = HASH.get('type') || QUERY.get('type');
   const linkErro = HASH.get('error_code') || HASH.get('error') || QUERY.get('error_code') || QUERY.get('error');
   const linkTokenHash = QUERY.get('token_hash');
-  const VERSAO = '2026-10-30g';
+  const VERSAO = '2026-10-30h';
   const sb = supabase.createClient(URL, CHAVE);
 
   // Link de e-mail no formato com token_hash (outros modelos de e-mail do Supabase): valida aqui.

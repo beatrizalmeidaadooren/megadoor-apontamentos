@@ -14,7 +14,7 @@
 :root{
   --bg:#F2F4F3;--surface:#FFFFFF;--surface-2:#E7ECEA;--ink:#162027;--muted:#5A676D;--line:#D3DBD9;
   --accent:#1D5E8A;--accent-ink:#FFFFFF;
-  --good:#17754A;--good-bg:#D9F0E2;--warn:#8A5E00;--warn-bg:#FBEBC2;--bad:#A8231B;--bad-bg:#F8DCD8;--empty:#ECEFEE;--info:#1D4F91;--info-bg:#E2EBF8;
+  --good:#17754A;--good-bg:#D9F0E2;--warn:#8A5E00;--warn-bg:#FBEBC2;--bad:#A8231B;--bad-bg:#F8DCD8;--empty:#ECEFEE;--info:#1D4F91;--info-bg:#E2EBF8;--eu:#6B3FA0;--eu-bg:#EEE4F8;
   --radius:10px;
   --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -25,7 +25,7 @@
     color-scheme:dark;
     --bg:#0F1417;--surface:#172025;--surface-2:#202A30;--ink:#E3E9EB;--muted:#95A2A8;--line:#2B363C;
     --accent:#74AEDA;--accent-ink:#0B1822;
-    --good:#72D29E;--good-bg:#153726;--warn:#F0C45A;--warn-bg:#3A2F10;--bad:#FF8C82;--bad-bg:#431E1B;--empty:#1B2429;--info:#9CC2F0;--info-bg:#1A2A3D;
+    --good:#72D29E;--good-bg:#153726;--warn:#F0C45A;--warn-bg:#3A2F10;--bad:#FF8C82;--bad-bg:#431E1B;--empty:#1B2429;--info:#9CC2F0;--info-bg:#1A2A3D;--eu:#CDB0F2;--eu-bg:#2E2242;
   }
 }
 *{box-sizing:border-box}
@@ -75,6 +75,9 @@ td{padding:6px 10px;border-bottom:1px solid var(--line);font-size:13px;white-spa
 td.num{font-family:var(--mono);font-size:12.5px;text-align:right}
 td.txt{white-space:normal;min-width:110px;max-width:240px}
 td.mine{background:color-mix(in srgb,var(--info-bg) 45%,transparent)}
+td.eu,td.eu input{background:var(--eu-bg);color:var(--eu);font-weight:600}
+input.aj{width:150px;font:inherit;padding:3px 5px;border:1px solid var(--line,#ccc);border-radius:4px;background:transparent;color:inherit}
+.legenda-eu{display:inline-block;background:var(--eu-bg);color:var(--eu);font-weight:600;border-radius:4px;padding:1px 6px}
 td select{max-width:210px}
 tr.salvando td{opacity:.6}
 .pill{font:600 11px/1 var(--sans);padding:4px 8px;border-radius:999px;white-space:nowrap;display:inline-block}
@@ -241,10 +244,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-30g"></script>
-<script src="planilha.js?v=2026-10-30g"></script>
-<script src="filtros.js?v=2026-10-30g"></script>
-<script src="abas.js?v=2026-10-30g"></script>
+<script src="comum.js?v=2026-10-30h"></script>
+<script src="planilha.js?v=2026-10-30h"></script>
+<script src="filtros.js?v=2026-10-30h"></script>
+<script src="abas.js?v=2026-10-30h"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -310,6 +313,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     ]);
     for (const r of [sub, prog, leg]) if (r.error) throw new Error(r.error.message);
     S.classif = {}; cls.forEach(c => S.classif[c.nreg] = c);
+    S.aj = {}; (await MG.buscarTudo('ajustes', '*')).forEach(a => S.aj[a.nreg] = a);
     S.pend = {}; pen.forEach(p => S.pend[p.nreg] = p);
     S.subgrupos = (sub.data || []).filter(s => s.ativo !== false);
     S.programadas = prog.data || [];
@@ -358,6 +362,17 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   }
 
   /* ---------- aba Apontamentos ---------- */
+  // Seus ajustes nos campos do operador (tabela "ajustes"): o seu valor aparece no lugar do dele, em roxo.
+  const AJ_CAMPOS = ['conjunto', 'item', 'problema', 'solucao'];
+  const ajDe = l => (S.aj && S.aj[l.nreg]) || null;
+  const vl = (l, k) => { const a = ajDe(l); return a && a[k] != null ? a[k] : l[k]; };
+  const ehMeu = (l, k) => { const a = ajDe(l); return !!(a && a[k] != null); };
+  function celulaAj(l, k) {
+    const meu = ehMeu(l, k), v = vl(l, k) || '';
+    const dica = meu ? `Preenchido por você. Original do operador: ${l[k] ? l[k] : '(vazio)'}` : (l[k] ? 'Preenchido pelo operador' : '');
+    if (!S.dona) return `<td class="txt${meu ? ' eu' : ''}" title="${esc(dica)}">${esc(v)}</td>`;
+    return `<td class="${meu ? 'eu' : ''}"><input class="aj" data-k="${k}" value="${esc(v)}" title="${esc(dica)}"></td>`;
+  }
   function filtradas() {
     const t = $('fTurno').value, o = $('fOper').value, m = $('fMinha').value, b = norm($('fBusca').value), ss = $('semSistema').checked;
     return S.linhas.filter(l => {
@@ -368,7 +383,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       if (m === 'feita' && !(c && c.programada)) return false;
       if (m === 'falta' && (c && c.programada)) return false;
       if (b) {
-        const txt = norm([l.nreg, l.oee_operador, l.conjunto, l.problema, l.solucao, l.observacao, l.item, c && c.programada, c && c.subgrupo].join(' '));
+        const txt = norm([l.nreg, l.oee_operador, vl(l, 'conjunto'), vl(l, 'problema'), vl(l, 'solucao'), l.observacao, vl(l, 'item'), (ajDe(l) || {}).obs, c && c.programada, c && c.subgrupo].join(' '));
         if (!txt.includes(b)) return false;
       }
       return true;
@@ -392,11 +407,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     {chave: 'sub', valor: l => (S.classif[l.nreg] || {}).subgrupo},
     {chave: 'oper', valor: l => operTexto(l.oee_operador)},
     {chave: 'sit', valor: l => ROT_OP[sitOperador(l)]},
-    {chave: 'conj', valor: l => l.conjunto}, {chave: 'item', valor: l => l.item}, {chave: 'prob', valor: l => l.problema},
-    {chave: 'sol', valor: l => l.solucao}, {chave: 'obs', valor: l => l.observacao}]});
+    {chave: 'conj', valor: l => vl(l, 'conjunto')}, {chave: 'item', valor: l => vl(l, 'item')}, {chave: 'prob', valor: l => vl(l, 'problema')},
+    {chave: 'sol', valor: l => vl(l, 'solucao')}, {chave: 'obs', valor: l => l.observacao}, {chave: 'minhaobs', valor: l => (ajDe(l) || {}).obs}]});
 
   // Setas do teclado: andar entre Programada e Subgrupo como numa planilha (passa de página nas bordas)
-  const GA = MGTeclado.grade($('tabela'), {seletor: 'select.prog, select.sub', chaveLinha: tr => tr.dataset.n,
+  const GA = MGTeclado.grade($('tabela'), {seletor: 'select.prog, select.sub, input.aj', chaveLinha: tr => tr.dataset.n,
     aoBorda: (dir, col) => {
       const tot = Math.ceil(FA.aplicar(filtradas()).length / 100);
       if (dir === 'baixo' && S.pagina < tot - 1) { S.pagina++; renderApont(); GA.focarPrimeira(col); return true; }
@@ -417,7 +432,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       <div class="kpi"><span>Turno anterior não preencheu</span><b>${nf(cont.turno_anterior)}</b></div>
       <div class="kpi"><span>Pendentes</span><b style="color:var(--bad)">${nf(cont.pendente)}</b></div>
       <div class="kpi"><span>Classificadas por você</span><b style="color:var(--info)">${nf(minhas)}</b></div>` + analiseHTML(acima);
-    $('resumo').innerHTML = `${nf(L.length)} registros no filtro` + (FA.ativos() ? ` · ${FA.ativos()} filtro(s) de coluna <button class="btn small" type="button" id="limparFA">Limpar filtros das colunas</button>` : '');
+    $('resumo').innerHTML = `${nf(L.length)} registros no filtro · <span class="legenda-eu" title="Conjunto, item, problema ou solução preenchidos/alterados por você. Passe o mouse para ver o original do operador. Apague o campo para voltar ao valor do operador.">roxo = preenchido por você</span>` + (FA.ativos() ? ` · ${FA.ativos()} filtro(s) de coluna <button class="btn small" type="button" id="limparFA">Limpar filtros das colunas</button>` : '');
     if ($('limparFA')) $('limparFA').onclick = () => FA.limpar();
 
     const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
@@ -431,7 +446,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const cab = `<thead><tr>${th('nreg', 'Registro')}${th('dia', 'Data e hora')}${th('turno', 'Turno')}${th('hant', 'H anterior')}${th('hora', 'Hora')}
       ${th('ciclo', 'T ciclo')}${th('perdido', 'T perdido')}${th('fora', 'Fora do takt')}${th('kits', 'Kits perdidos')}
       ${th('prog', 'Programada', 'mine')}${th('grupo', 'Grupo do OEE', 'mine')}${th('seis', '6 Grandes Perdas', 'mine')}${th('sub', 'Subgrupo do OEE', 'mine')}
-      ${th('oper', 'OEE Operador')}${th('sit', 'Situação')}${th('conj', 'Conjunto')}${th('item', 'Item')}${th('prob', 'Problema')}${th('sol', 'Solução')}${th('obs', 'Observações')}</tr></thead>`;
+      ${th('oper', 'OEE Operador')}${th('sit', 'Situação')}${th('conj', 'Conjunto')}${th('item', 'Item')}${th('prob', 'Problema')}${th('sol', 'Solução')}${th('obs', 'Observações')}${th('minhaobs', 'Minhas observações', 'mine')}</tr></thead>`;
     let h = cab + '<tbody>';
     for (const l of pag) {
       const c = S.classif[l.nreg] || {};
@@ -453,11 +468,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         <td class="mine">${np ? `<select class="sub" ${ed}><option value=""></option>${subOpts}</select>` : `<span class="subtx">${esc(c.subgrupo || '')}</span>`}</td>
         <td>${esc(operTexto(l.oee_operador))}</td>
         <td><span class="pill ${sit}">${ROT_OP[sit]}</span>${acao}</td>
-        <td class="txt">${esc(l.conjunto || '')}</td><td class="txt">${esc(l.item || '')}</td><td class="txt">${esc(l.problema || '')}</td>
-        <td class="txt">${esc(l.solucao || '')}</td><td class="txt">${esc(l.observacao || '')}</td></tr>`;
+        ${AJ_CAMPOS.map(k => celulaAj(l, k)).join('')}<td class="txt">${esc(l.observacao || '')}</td>
+        <td class="mine${S.dona ? '' : ' txt'}">${S.dona ? `<input class="aj" data-k="obs" value="${esc((ajDe(l) || {}).obs || '')}" style="width:200px">` : esc((ajDe(l) || {}).obs || '')}</td></tr>`;
     }
     h += '</tbody>';
-    if (!pag.length) h = cab + '<tbody><tr><td class="muted" colspan="20" style="padding:18px">Nenhum registro com esses filtros.</td></tr></tbody>';
+    if (!pag.length) h = cab + '<tbody><tr><td class="muted" colspan="21" style="padding:18px">Nenhum registro com esses filtros.</td></tr></tbody>';
     $('tabela').innerHTML = h;
     $('tabela').querySelectorAll('tr[data-n]').forEach(tr => {
       const c = S.classif[tr.dataset.n];
@@ -547,7 +562,39 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   $('tabela').addEventListener('change', e => {
     const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
     if (e.target.classList.contains('prog') || e.target.classList.contains('sub')) salvarLinha(tr);
+    if (e.target.classList.contains('aj')) salvarAjuste(tr, e.target);
   });
+  // Grava o seu ajuste num campo do operador (ou a sua observação). Campo vazio = volta a valer o que o operador escreveu.
+  async function salvarAjuste(tr, inp) {
+    const nreg = Number(tr.dataset.n), k = inp.dataset.k;
+    const l = S.linhas.find(x => x.nreg === nreg); if (!l) return;
+    const antigo = S.aj[nreg] || {nreg};
+    const novo = {...antigo};
+    let v = inp.value.replace(/\s+/g, ' ').trim();
+    if (k === 'obs') novo.obs = v || null;
+    else novo[k] = (!v || v === (l[k] || '').replace(/\s+/g, ' ').trim()) ? null : v;
+    const vazio = AJ_CAMPOS.every(c => novo[c] == null) && novo.obs == null;
+    tr.classList.add('salvando');
+    let r;
+    if (vazio) r = await sb.from('ajustes').delete().eq('nreg', nreg);
+    else {
+      const reg = {nreg, obs: novo.obs ?? null, atualizado_em: new Date().toISOString(), atualizado_por: S.sess.user.email};
+      AJ_CAMPOS.forEach(c => reg[c] = novo[c] ?? null);
+      r = await sb.from('ajustes').upsert(reg, {onConflict: 'nreg'});
+      Object.assign(novo, reg);
+    }
+    tr.classList.remove('salvando');
+    if (r.error) { $('msg').textContent = 'Erro ao salvar: ' + r.error.message; return; }
+    if (vazio) delete S.aj[nreg]; else S.aj[nreg] = novo;
+    aviso(k !== 'obs' && novo[k] == null ? 'Salvo · voltou a valer o que o operador escreveu' : 'Salvo');
+    // atualiza só a célula (sem redesenhar a tabela, para não atrapalhar quem está digitando)
+    if (k !== 'obs') {
+      const td = inp.closest('td'), meu = ehMeu(l, k);
+      td.classList.toggle('eu', meu);
+      if (document.activeElement !== inp) inp.value = vl(l, k) || '';
+      inp.title = meu ? `Preenchido por você. Original do operador: ${l[k] ? l[k] : '(vazio)'}` : (l[k] ? 'Preenchido pelo operador' : '');
+    }
+  }
   $('tabela').addEventListener('click', async e => {
     const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
     if (e.target.classList.contains('ign')) { if (await marcarIgnorada(Number(tr.dataset.n), true)) { aviso('Ignorada'); renderApont(); renderPend(); } }
