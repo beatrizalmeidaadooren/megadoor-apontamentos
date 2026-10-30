@@ -193,6 +193,8 @@ window.MGPlanilha = (function () {
       add('sis_limpeza', d.limpeza.map(r => ({ ...r, itens: (r.itens || []).map(x => x || '_').join(' ') })));
       add('sis_os', d.os);
       add('sis_montagem', d.montagem);
+      if (d.montagem_pendente) add('sis_montagem_pendente', d.montagem_pendente.map(r => ({ ...r, dados: JSON.stringify(r.dados) })));
+      if (d.montagem_historico) add('sis_montagem_historico', d.montagem_historico.map(r => ({ ...r, dados_antigos: JSON.stringify(r.dados_antigos), dados_novos: JSON.stringify(r.dados_novos) })));
       add('sis_subgrupos', d.subgrupos);
       add('sis_programadas', d.programadas);
       add('LEIA-ME', [{ 'Sobre este arquivo': 'Backup do sistema Megadoor gerado em ' + new Date().toLocaleString('pt-BR') },

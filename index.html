@@ -238,9 +238,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-30a"></script>
-<script src="planilha.js?v=2026-10-30a"></script>
-<script src="abas.js?v=2026-10-30a"></script>
+<script src="comum.js?v=2026-10-30b"></script>
+<script src="planilha.js?v=2026-10-30b"></script>
+<script src="abas.js?v=2026-10-30b"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -618,8 +618,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const m = $('backupMsg');
     try {
       m.textContent = 'Lendo dados…';
-      const [dados, pend] = await Promise.all([MGPlanilha.lerTudo(t => { m.textContent = t; }), MG.buscarTudo('pendencias', '*')]);
-      dados.pendencias = pend;
+      const [dados, pend, mPend, mHist] = await Promise.all([MGPlanilha.lerTudo(t => { m.textContent = t; }), MG.buscarTudo('pendencias', '*'),
+        MG.buscarTudo('montagem_pendente', '*'), MG.buscarTudo('montagem_historico', '*', null, 'id')]);
+      dados.pendencias = pend; dados.montagem_pendente = mPend; dados.montagem_historico = mHist;
       m.textContent = 'Montando o Excel…';
       await new Promise(r => setTimeout(r, 30));
       const wb = MGPlanilha.montar(dados, {extras: true});

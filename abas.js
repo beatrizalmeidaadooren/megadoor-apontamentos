@@ -32,20 +32,29 @@ window.MGAbas = (function () {
   const txt = v => { if (v == null) return null; const s = String(v).trim(); return s || null; };
 
   /* =================== MONTAGEM =================== */
-  const M = { linhas: [], pagina: 0, carregado: false };
+  const M = { linhas: [], pagina: 0, carregado: false, pendentes: [] };
+  // Campos que vêm do arquivo da Montagem (a .MÁQUINA é sua e nunca é trocada pelo arquivo)
+  const CAMPOS_M = [['data', 'Data'], ['turno', 'Turno'], ['hora_ant', 'Hora ant'], ['hora', 'Hora'], ['tempo_s', 'Tempo'],
+    ['cod_id', 'ID'], ['descricao', 'Descrição'], ['obs', 'Obs'], ['setor', 'Setor']];
+  const valCmp = v => v == null ? '' : String(v).replace(/_x000d_/gi, '').replace(/\s+/g, ' ').trim();
+  const mostraCampo = (k, v) => v == null || v === '' ? '(vazio)' : k === 'tempo_s' ? dur(v) : k === 'data' ? dBR(v) : String(v);
+  function diferencas(sistema, arquivo) {
+    return CAMPOS_M.filter(([k]) => valCmp(sistema[k]) !== valCmp(arquivo[k]));
+  }
   const MAQ_SUGESTOES = ['MEGADOOR', 'CERCOMAK', '-', '?'];
   const fora = d => /^IGNORA OEE|^FOLGA FISIOLOGICA/.test(norm(d));
 
   function montagemHTML() {
     return `
     <div class="card"><h2>Apontamentos da Montagem</h2>
-      <p class="muted" style="margin:6px 0 0;max-width:90ch">Importe aqui o arquivo que você baixa do sistema da Montagem (.xlsx ou .csv). Registros repetidos não duplicam (a chave é o NReg) e a coluna .MÁQUINA que você já preencheu é mantida. A .MÁQUINA você preenche direto na tabela: MEGADOOR, CERCOMAK, "-" (nenhuma máquina) ou "?" (a revisar).</p>
+      <p class="muted" style="margin:6px 0 0;max-width:90ch">Importe aqui o arquivo que você baixa do sistema da Montagem (.xlsx ou .csv). Apontamentos novos entram direto. Se um apontamento que já está no sistema vier diferente no arquivo, ele não é trocado sozinho: aparece em "Diferenças para revisar" para você decidir. A .MÁQUINA que você preencheu nunca é apagada. A .MÁQUINA você preenche direto na tabela: MEGADOOR, CERCOMAK, "-" (nenhuma máquina) ou "?" (a revisar).</p>
       <div class="barra" style="margin:12px 0 0;border-left-color:var(--good)">
         <label class="btn primary" for="mImport" id="mImportBtn">Importar arquivo da Montagem</label>
         <input type="file" id="mImport" accept=".xlsx,.xls,.csv" hidden>
         <span class="muted" id="mImportMsg"></span>
       </div>
     </div>
+    <div class="card" id="mConf" hidden></div>
     <div class="barra">
       <label>De <input type="date" id="mIni"></label><label>até <input type="date" id="mFim"></label>
       <label>Turno <select id="mTurno"><option value="">Todos</option><option>Turno A</option><option>Turno B</option><option>Turno C</option></select></label>
@@ -63,8 +72,15 @@ window.MGAbas = (function () {
   async function montagemCarregar() {
     $('mResumo').textContent = 'Carregando…';
     try {
-      M.linhas = (await MG.buscarTudo('montagem', '*')).sort((a, b) => b.nreg - a.nreg);
+      const [linhas, pend, hist] = await Promise.all([MG.buscarTudo('montagem', '*'), MG.buscarTudo('montagem_pendente', '*'),
+        MG.buscarTudo('montagem_historico', 'id,nreg,decisao,dados_novos', null, 'id')]);
+      // versões do arquivo que você já recusou ("manter o do sistema"): não são perguntadas de novo
+      M.recusadas = new Map();
+      hist.forEach(h => { if (h.decisao === 'sistema') M.recusadas.set(h.nreg, h.dados_novos || {}); else M.recusadas.delete(h.nreg); });
+      M.linhas = linhas.sort((a, b) => b.nreg - a.nreg);
+      M.pendentes = pend.sort((a, b) => a.nreg - b.nreg);
       M.carregado = true;
+      conflitosRender();
       if (!$('mIni').value && M.linhas.length) {
         const ult = M.linhas.reduce((a, l) => l.data > a ? l.data : a, '');
         const d = new Date(ult + 'T12:00:00'); d.setDate(d.getDate() - 30);
@@ -178,26 +194,117 @@ window.MGAbas = (function () {
       if (!linhas.length) throw new Error('O arquivo não tem apontamentos válidos.');
       if (!M.carregado) await montagemCarregar();
       const existe = new Map(M.linhas.map(l => [l.nreg, l]));
-      const novas = linhas.filter(l => !existe.has(l.nreg)).length;
-      // .MÁQUINA do arquivo só entra onde o sistema ainda está sem marcação
-      const comMaq = linhas.filter(l => l._maquina && !(existe.get(l.nreg) || {}).maquina);
       const agora = new Date().toISOString();
-      const comSet = new Set(comMaq.map(l => l.nreg));
-      // Dois lotes: sem .MÁQUINA (não mexe na marcação já existente) e com .MÁQUINA (só onde o sistema estava vazio)
-      const lotes = [linhas.filter(l => !comSet.has(l.nreg)).map(({ _maquina, ...r }) => ({ ...r, importado_em: agora })),
-                     linhas.filter(l => comSet.has(l.nreg)).map(({ _maquina, ...r }) => ({ ...r, maquina: _maquina, importado_em: agora }))];
+      // Novos: entram direto (com a .MÁQUINA do arquivo, se houver).
+      // Já existentes e iguais: nada a fazer. Já existentes e DIFERENTES: ficam esperando a sua decisão.
+      const novas = [], diferentes = [], iguais = [], recusadas = [];
+      for (const l of linhas) {
+        const atual = existe.get(l.nreg);
+        if (!atual) novas.push(l);
+        else if (!diferencas(atual, l).length) iguais.push(l);
+        else if (M.recusadas && M.recusadas.has(l.nreg) && !diferencas(M.recusadas.get(l.nreg), l).length) recusadas.push(l);
+        else diferentes.push(l);
+      }
+      const envioNovas = novas.map(({ _maquina, ...r }) => ({ ...r, ...(_maquina ? { maquina: _maquina } : {}), importado_em: agora }));
+      // os lotes precisam ter as mesmas colunas: separa os que trazem .MÁQUINA dos que não trazem
+      const lotes = [envioNovas.filter(r => !('maquina' in r)), envioNovas.filter(r => 'maquina' in r)];
       let feitos = 0;
       for (const lote of lotes) for (let i = 0; i < lote.length; i += 500) {
-        const { error } = await sb.from('montagem').upsert(lote.slice(i, i + 500), { onConflict: 'nreg' });
+        const { error } = await sb.from('montagem').upsert(lote.slice(i, i + 500), { onConflict: 'nreg', ignoreDuplicates: true });
         if (error) throw new Error(error.message);
         feitos += Math.min(500, lote.length - i);
-        msg.textContent = `Enviando ${nf(feitos)} de ${nf(linhas.length)}…`;
+        msg.textContent = `Enviando novos: ${nf(feitos)} de ${nf(novas.length)}…`;
+      }
+      const pend = diferentes.map(({ _maquina, ...r }) => ({ nreg: r.nreg, dados: r, arquivo: file.name, importado_em: agora }));
+      for (let i = 0; i < pend.length; i += 500) {
+        const { error } = await sb.from('montagem_pendente').upsert(pend.slice(i, i + 500), { onConflict: 'nreg' });
+        if (error) throw new Error(error.message);
+      }
+      // se o arquivo novo voltou a bater com o sistema, a diferença antiga deixa de valer
+      const resolvidas = iguais.map(l => l.nreg).filter(n => M.pendentes.some(p => p.nreg === n));
+      for (let i = 0; i < resolvidas.length; i += 200) {
+        const { error } = await sb.from('montagem_pendente').delete().in('nreg', resolvidas.slice(i, i + 200));
+        if (error) throw new Error(error.message);
       }
       const datas = linhas.map(l => l.data).sort();
-      msg.textContent = `Importado: ${nf(linhas.length)} apontamentos (${nf(novas)} novos) da aba "${aba}", de ${dBR(datas[0])} a ${dBR(datas[datas.length - 1])}.`;
+      msg.textContent = `Arquivo "${file.name}" (aba ${aba}, ${dBR(datas[0])} a ${dBR(datas[datas.length - 1])}): ${nf(novas.length)} novos, ` +
+        `${nf(iguais.length)} sem mudança` + (recusadas.length ? `, ${nf(recusadas.length)} diferenças que você já tinha recusado` : '') + (diferentes.length ? `, ${nf(diferentes.length)} diferentes do sistema — revise acima.` : '.');
       await montagemCarregar();
     } catch (e) { msg.textContent = ''; CTX.erro('Erro ao importar: ' + e.message); }
     finally { importando = false; }
+  }
+
+  /* ---- Diferenças entre o sistema e o arquivo importado: você decide, linha por linha ---- */
+  function conflitosRender() {
+    const box = $('mConf');
+    if (!CTX.dona || !M.pendentes.length) { box.hidden = true; box.innerHTML = ''; return; }
+    const porNreg = new Map(M.linhas.map(l => [l.nreg, l]));
+    let h = `<h2>Diferenças para revisar (${nf(M.pendentes.length)})</h2>
+      <p class="muted" style="margin:6px 0 10px;max-width:95ch">Estes apontamentos já estavam no sistema, mas o arquivo importado traz algo diferente (alguém mudou no sistema da Montagem depois). Escolha, para cada um, se fica o que está no sistema ou se passa a valer o do arquivo. A sua .MÁQUINA é mantida nos dois casos. Toda decisão fica guardada no histórico.</p>
+      <div class="barra" style="margin:0 0 10px">
+        <button class="btn small" type="button" data-todos="sistema">Manter o do sistema em todos</button>
+        <button class="btn small" type="button" data-todos="arquivo">Usar o do arquivo em todos</button>
+        <span class="muted" id="mConfMsg"></span>
+      </div>
+      <div class="scroll" style="max-height:50vh"><table><thead><tr><th>NReg</th><th>Data · turno</th><th>.MÁQUINA</th><th>O que mudou (sistema → arquivo)</th><th></th></tr></thead><tbody>`;
+    for (const p of M.pendentes) {
+      const atual = porNreg.get(p.nreg) || {}, novo = p.dados || {};
+      const difs = diferencas(atual, novo);
+      h += `<tr data-n="${p.nreg}"><td class="num">${p.nreg}</td><td class="num">${dBR(atual.data || novo.data)} · ${esc(atual.turno || novo.turno || '')}</td>
+        <td>${esc(atual.maquina || '')}</td>
+        <td class="txt" style="max-width:520px">${difs.length ? difs.map(([k, rot]) => `<div><b>${rot}:</b> <span style="color:var(--bad);text-decoration:line-through">${esc(mostraCampo(k, atual[k]))}</span> → <span style="color:var(--good)">${esc(mostraCampo(k, novo[k]))}</span></div>`).join('') : '<span class="muted">sem diferença</span>'}
+          <div class="muted">arquivo: ${esc(p.arquivo || '')}</div></td>
+        <td style="white-space:nowrap"><button class="btn small" type="button" data-dec="sistema">Manter o do sistema</button>
+          <button class="btn small primary" type="button" data-dec="arquivo">Usar o do arquivo</button></td></tr>`;
+    }
+    box.innerHTML = h + '</tbody></table></div>';
+    box.hidden = false;
+  }
+
+  // Aplica a decisão a vários apontamentos de uma vez (em lotes de 500)
+  async function decidir(nregs, decisao, aoProgresso) {
+    const porNreg = new Map(M.linhas.map(l => [l.nreg, l]));
+    const escolhidos = M.pendentes.filter(p => nregs.includes(p.nreg));
+    for (let i = 0; i < escolhidos.length; i += 500) {
+      const lote = escolhidos.slice(i, i + 500);
+      const pega = (o, k) => (o[k] == null ? null : o[k]);
+      const hist = lote.map(p => {
+        const atual = porNreg.get(p.nreg) || {};
+        return { nreg: p.nreg, decisao,
+          dados_antigos: Object.fromEntries(CAMPOS_M.map(([k]) => [k, pega(atual, k)])),
+          dados_novos: Object.fromEntries(CAMPOS_M.map(([k]) => [k, pega(p.dados, k)])) };
+      });
+      let r = await sb.from('montagem_historico').insert(hist);
+      if (r.error) throw new Error(r.error.message);
+      hist.forEach(h => { if (decisao === 'sistema') M.recusadas.set(h.nreg, h.dados_novos); else M.recusadas.delete(h.nreg); });
+      if (decisao === 'arquivo') {
+        const agora = new Date().toISOString();
+        // upsert só com os campos do arquivo: a .MÁQUINA não vai junto, então fica como está
+        const linhas = hist.map(h => ({ nreg: h.nreg, ...h.dados_novos, importado_em: agora }));
+        r = await sb.from('montagem').upsert(linhas, { onConflict: 'nreg' });
+        if (r.error) throw new Error(r.error.message);
+        hist.forEach(h => Object.assign(porNreg.get(h.nreg) || {}, h.dados_novos));
+      }
+      r = await sb.from('montagem_pendente').delete().in('nreg', lote.map(p => p.nreg));
+      if (r.error) throw new Error(r.error.message);
+      const feitos = new Set(lote.map(p => p.nreg));
+      M.pendentes = M.pendentes.filter(x => !feitos.has(x.nreg));
+      if (aoProgresso) aoProgresso(Math.min(i + 500, escolhidos.length), escolhidos.length);
+    }
+  }
+
+  let decidindo = false;
+  async function conflitosClique(e) {
+    const b = e.target.closest('button'); if (!b || !CTX.dona || decidindo) return;
+    const dec = b.dataset.dec || b.dataset.todos; if (!dec) return;
+    const alvo = b.dataset.todos ? M.pendentes.map(p => p.nreg) : [Number(b.closest('tr').dataset.n)];
+    if (b.dataset.todos && !confirm(`${dec === 'arquivo' ? 'Usar o do arquivo' : 'Manter o do sistema'} em ${alvo.length} apontamento(s)?`)) return;
+    decidindo = true;
+    try {
+      await decidir(alvo, dec, (k, n) => { if ($('mConfMsg')) $('mConfMsg').textContent = `${k} de ${n}…`; });
+      CTX.aviso(alvo.length > 1 ? `${alvo.length} decisões salvas` : 'Decisão salva');
+    } catch (err) { CTX.erro('Erro ao salvar a decisão: ' + err.message); }
+    finally { decidindo = false; conflitosRender(); montagemRender(); }
   }
 
   function montagemIniciar() {
@@ -207,6 +314,7 @@ window.MGAbas = (function () {
     ['mIni', 'mFim', 'mTurno', 'mMaq', 'mFora'].forEach(id => $(id).addEventListener('change', () => { M.pagina = 0; montagemRender(); }));
     let t; $('mBusca').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { M.pagina = 0; montagemRender(); }, 250); });
     $('mTabela').addEventListener('change', e => { if (CTX.dona && e.target.classList.contains('maq')) montagemSalvarMaquina(e.target); });
+    $('mConf').addEventListener('click', conflitosClique);
     montagemCarregar();
   }
 
