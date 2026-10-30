@@ -73,7 +73,7 @@ th{position:sticky;top:0;z-index:2;font:500 10.5px/1.2 var(--mono);text-transfor
 th.mine{background:var(--info-bg);color:var(--info)}
 td{padding:6px 10px;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap;vertical-align:middle}
 td.num{font-family:var(--mono);font-size:12.5px;text-align:right}
-td.txt{white-space:normal;min-width:160px;max-width:300px}
+td.txt{white-space:normal;min-width:110px;max-width:240px}
 td.mine{background:color-mix(in srgb,var(--info-bg) 45%,transparent)}
 td select{max-width:210px}
 tr.salvando td{opacity:.6}
@@ -186,6 +186,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         <label>Buscar <input type="search" id="fBusca" placeholder="texto ou registro" style="width:150px"></label>
         <span class="muted" id="resumo"></span>
       </div>
+      <p class="muted" style="margin:-4px 0 10px">Teclado: ↑ ↓ ← → andam entre as células de Programada e Subgrupo; digite a primeira letra para escolher (ex.: N para "Não programada") ou Enter para abrir a lista. Cada escolha salva na hora.</p>
       <div class="kpis" id="kpis"></div>
       <div class="scroll"><table id="tabela"></table></div>
       <div class="pag" id="pag"></div>
@@ -240,9 +241,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-30c"></script>
-<script src="planilha.js?v=2026-10-30c"></script>
-<script src="abas.js?v=2026-10-30c"></script>
+<script src="comum.js?v=2026-10-30f"></script>
+<script src="planilha.js?v=2026-10-30f"></script>
+<script src="filtros.js?v=2026-10-30f"></script>
+<script src="abas.js?v=2026-10-30f"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -373,8 +375,38 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     });
   }
 
+  // Filtros nas colunas da tabela (como no Excel)
+  const FA = MGFiltros.criar({ aoMudar: () => { S.pagina = 0; renderApont(); }, colunas: [
+    {chave: 'nreg', tipo: 'num', valor: l => l.nreg},
+    {chave: 'dia', valor: l => l.dia, mostrar: v => dBR(v)},
+    {chave: 'turno', valor: l => TURNO[l.idturno] || l.idturno},
+    {chave: 'hant', valor: l => l.hora_anterior},
+    {chave: 'hora', valor: l => l.hora},
+    {chave: 'ciclo', tipo: 'num', valor: l => l.t_ciclo_s},
+    {chave: 'perdido', tipo: 'num', valor: l => l.t_ciclo_s == null ? null : l.t_ciclo_s - tk(l).nominal},
+    {chave: 'fora', tipo: 'num', valor: l => l.t_ciclo_s == null ? null : l.t_ciclo_s - tk(l).takt},
+    {chave: 'kits', tipo: 'num', valor: l => l.t_ciclo_s == null ? null : Math.round((l.t_ciclo_s - tk(l).takt) / tk(l).nominal * 10) / 10},
+    {chave: 'prog', valor: l => (S.classif[l.nreg] || {}).programada},
+    {chave: 'grupo', valor: l => (S.classif[l.nreg] || {}).grupo},
+    {chave: 'seis', valor: l => (S.classif[l.nreg] || {}).seis_perdas},
+    {chave: 'sub', valor: l => (S.classif[l.nreg] || {}).subgrupo},
+    {chave: 'oper', valor: l => operTexto(l.oee_operador)},
+    {chave: 'sit', valor: l => ROT_OP[sitOperador(l)]},
+    {chave: 'conj', valor: l => l.conjunto}, {chave: 'item', valor: l => l.item}, {chave: 'prob', valor: l => l.problema},
+    {chave: 'sol', valor: l => l.solucao}, {chave: 'obs', valor: l => l.observacao}]});
+
+  // Setas do teclado: andar entre Programada e Subgrupo como numa planilha (passa de página nas bordas)
+  const GA = MGTeclado.grade($('tabela'), {seletor: 'select.prog, select.sub', chaveLinha: tr => tr.dataset.n,
+    aoBorda: (dir, col) => {
+      const tot = Math.ceil(FA.aplicar(filtradas()).length / 100);
+      if (dir === 'baixo' && S.pagina < tot - 1) { S.pagina++; renderApont(); GA.focarPrimeira(col); return true; }
+      if (dir === 'cima' && S.pagina > 0) { S.pagina--; renderApont(); GA.focarPrimeira(col, true); return true; }
+      return false;
+    }});
+
   function renderApont() {
-    const L = filtradas();
+    const foco = GA.lembrar();
+    const L = FA.aplicar(filtradas());
     const acima = L.filter(acimaTakt);
     const cont = {pendente: 0, apontado: 0, turno_anterior: 0, ignorada: 0};
     acima.forEach(l => { const s = sitOperador(l); if (s in cont) cont[s]++; });
@@ -385,7 +417,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       <div class="kpi"><span>Turno anterior não preencheu</span><b>${nf(cont.turno_anterior)}</b></div>
       <div class="kpi"><span>Pendentes</span><b style="color:var(--bad)">${nf(cont.pendente)}</b></div>
       <div class="kpi"><span>Classificadas por você</span><b style="color:var(--info)">${nf(minhas)}</b></div>` + analiseHTML(acima);
-    $('resumo').textContent = `${nf(L.length)} registros no filtro`;
+    $('resumo').innerHTML = `${nf(L.length)} registros no filtro` + (FA.ativos() ? ` · ${FA.ativos()} filtro(s) de coluna <button class="btn small" type="button" id="limparFA">Limpar filtros das colunas</button>` : '');
+    if ($('limparFA')) $('limparFA').onclick = () => FA.limpar();
 
     const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
     if (S.pagina >= tot) S.pagina = tot - 1;
@@ -394,10 +427,12 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const subOpts = subsNP().map(s => `<option value="${esc(s.subgrupo)}">${esc(s.subgrupo)}</option>`).join('');
     const ed = S.dona ? '' : 'disabled';
 
-    let h = `<thead><tr><th>Registro</th><th>Data e hora</th><th>Turno</th><th>H anterior</th><th>Hora</th>
-      <th>T ciclo</th><th>T perdido</th><th>Fora do takt</th><th>Kits perdidos</th>
-      <th class="mine">Programada</th><th class="mine">Grupo do OEE</th><th class="mine">6 Grandes Perdas</th><th class="mine">Subgrupo do OEE</th>
-      <th>OEE Operador</th><th>Situação</th><th>Conjunto</th><th>Item</th><th>Problema</th><th>Solução</th><th>Observações</th></tr></thead><tbody>`;
+    const th = (k, r, c) => FA.cabecalho(k, r, c);
+    const cab = `<thead><tr>${th('nreg', 'Registro')}${th('dia', 'Data e hora')}${th('turno', 'Turno')}${th('hant', 'H anterior')}${th('hora', 'Hora')}
+      ${th('ciclo', 'T ciclo')}${th('perdido', 'T perdido')}${th('fora', 'Fora do takt')}${th('kits', 'Kits perdidos')}
+      ${th('prog', 'Programada', 'mine')}${th('grupo', 'Grupo do OEE', 'mine')}${th('seis', '6 Grandes Perdas', 'mine')}${th('sub', 'Subgrupo do OEE', 'mine')}
+      ${th('oper', 'OEE Operador')}${th('sit', 'Situação')}${th('conj', 'Conjunto')}${th('item', 'Item')}${th('prob', 'Problema')}${th('sol', 'Solução')}${th('obs', 'Observações')}</tr></thead>`;
+    let h = cab + '<tbody>';
     for (const l of pag) {
       const c = S.classif[l.nreg] || {};
       const sit = sitOperador(l);
@@ -422,7 +457,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         <td class="txt">${esc(l.solucao || '')}</td><td class="txt">${esc(l.observacao || '')}</td></tr>`;
     }
     h += '</tbody>';
-    if (!pag.length) h = '<tbody><tr><td class="muted" style="padding:18px">Nenhum registro com esses filtros.</td></tr></tbody>';
+    if (!pag.length) h = cab + '<tbody><tr><td class="muted" colspan="20" style="padding:18px">Nenhum registro com esses filtros.</td></tr></tbody>';
     $('tabela').innerHTML = h;
     $('tabela').querySelectorAll('tr[data-n]').forEach(tr => {
       const c = S.classif[tr.dataset.n];
@@ -435,6 +470,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       <button class="btn small" id="pgProx" ${S.pagina >= tot - 1 ? 'disabled' : ''}>Próxima</button>`;
     $('pgAnt').onclick = () => { S.pagina--; renderApont(); };
     $('pgProx').onclick = () => { S.pagina++; renderApont(); };
+    GA.restaurar(foco);
   }
 
   // Indicadores da aba "analise" da planilha, calculados sobre as paradas acima do takt no filtro.
@@ -491,6 +527,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     if (cel) {
       const subOpts = subsNP().map(s => `<option value="${esc(s.subgrupo)}">${esc(s.subgrupo)}</option>`).join('');
       cel.outerHTML = `<select class="sub"><option value=""></option>${subOpts}</select>`;
+      const novo = tr.querySelector('select.sub'); if (novo) novo.focus();   // já fica pronto para escolher o subgrupo
     }
     tr.querySelector('.grp').textContent = ''; tr.querySelector('.seis').textContent = '';
     aviso('Escolha o subgrupo para salvar');
@@ -505,6 +542,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     return true;
   }
 
+  FA.ligar($('tabela'), () => filtradas());
+  MGZoom.anexar('tabela'); MGZoom.anexar('pTabela');
   $('tabela').addEventListener('change', e => {
     const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
     if (e.target.classList.contains('prog') || e.target.classList.contains('sub')) salvarLinha(tr);

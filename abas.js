@@ -64,6 +64,7 @@ window.MGAbas = (function () {
       <span class="muted" id="mResumo"></span>
     </div>
     <div class="kpis" id="mKpis"></div>
+    <p class="muted" style="margin:0 0 8px">Teclado: ↑ ↓ ou Enter andam entre as células de .MÁQUINA; ao sair da célula, salva.</p>
     <div class="scroll"><table id="mTabela"></table></div>
     <div class="pag" id="mPag"></div>
     <datalist id="mMaqLista">${MAQ_SUGESTOES.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
@@ -106,8 +107,10 @@ window.MGAbas = (function () {
     });
   }
 
+  let FM = null, GM = null;   // filtros das colunas e teclado (criados em montagemIniciar)
   function montagemRender() {
-    const L = montagemFiltradas();
+    const foco = GM && GM.lembrar();
+    const L = FM ? FM.aplicar(montagemFiltradas()) : montagemFiltradas();
     const contam = L.filter(l => !fora(l.descricao));
     const mega = contam.filter(l => norm(l.maquina) === 'MEGADOOR');
     const semMarca = contam.filter(l => !txt(l.maquina));
@@ -118,23 +121,27 @@ window.MGAbas = (function () {
       <div class="kpi"><span>Tempo perdido (sem Ignora OEE/Folga)</span><b>${h(tempo(contam))}</b></div>
       <div class="kpi"><span>Marcados MEGADOOR</span><b style="color:var(--info)">${nf(mega.length)} · ${h(tempo(mega))}</b></div>
       <div class="kpi"><span>Sem .MÁQUINA (perdas)</span><b style="color:var(--bad)">${nf(semMarca.length)}</b></div>`;
-    $('mResumo').textContent = `${nf(M.linhas.length)} apontamentos no sistema`;
+    $('mResumo').innerHTML = `${nf(M.linhas.length)} apontamentos no sistema` + (FM && FM.ativos() ? ` · ${FM.ativos()} filtro(s) de coluna <button class="btn small" type="button" id="mLimparF">Limpar filtros das colunas</button>` : '');
+    if ($('mLimparF')) $('mLimparF').onclick = () => FM.limpar();
     const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
     if (M.pagina >= tot) M.pagina = tot - 1;
     const pag = L.slice(M.pagina * POR, M.pagina * POR + POR);
     const ed = CTX.dona ? '' : 'disabled';
-    let hh = `<thead><tr><th class="mine">.MÁQUINA</th><th>NReg</th><th>Data</th><th>Turno</th><th>Hora ant</th><th>Hora</th><th>Tempo</th><th>ID</th><th>Descrição</th><th>Obs</th></tr></thead><tbody>`;
+    const th = (k, r, c) => FM.cabecalho(k, r, c);
+    const cab = `<thead><tr>${th('maq', '.MÁQUINA', 'mine')}${th('nreg', 'NReg')}${th('data', 'Data')}${th('turno', 'Turno')}${th('hant', 'Hora ant')}${th('hora', 'Hora')}${th('tempo', 'Tempo')}${th('id', 'ID')}${th('desc', 'Descrição')}${th('obs', 'Obs')}</tr></thead>`;
+    let hh = cab + '<tbody>';
     for (const l of pag) {
       hh += `<tr data-n="${l.nreg}"><td class="mine"><input class="maq" list="mMaqLista" value="${esc(l.maquina || '')}" ${ed} style="width:120px"></td>
         <td class="num">${l.nreg}</td><td class="num">${dBR(l.data)}</td><td>${esc(l.turno || '')}</td><td class="num">${esc(l.hora_ant || '')}</td><td class="num">${esc(l.hora || '')}</td>
         <td class="num">${dur(l.tempo_s)}</td><td class="num">${l.cod_id == null ? '' : l.cod_id}</td><td class="txt">${esc(l.descricao || '')}</td><td class="txt">${esc(l.obs || '')}</td></tr>`;
     }
     hh += '</tbody>';
-    if (!pag.length) hh = `<tbody><tr><td class="muted" style="padding:18px">${M.linhas.length ? 'Nenhum apontamento com esses filtros.' : 'Ainda não há apontamentos da Montagem no sistema. Use o botão "Importar arquivo da Montagem".'}</td></tr></tbody>`;
+    if (!pag.length) hh = cab + `<tbody><tr><td class="muted" colspan="10" style="padding:18px">${M.linhas.length ? 'Nenhum apontamento com esses filtros.' : 'Ainda não há apontamentos da Montagem no sistema. Use o botão "Importar arquivo da Montagem".'}</td></tr></tbody>`;
     $('mTabela').innerHTML = hh;
     $('mPag').innerHTML = `Página ${M.pagina + 1} de ${tot} <button class="btn small" id="mAnt" ${M.pagina === 0 ? 'disabled' : ''}>Anterior</button> <button class="btn small" id="mProx" ${M.pagina >= tot - 1 ? 'disabled' : ''}>Próxima</button>`;
     $('mAnt').onclick = () => { M.pagina--; montagemRender(); };
     $('mProx').onclick = () => { M.pagina++; montagemRender(); };
+    if (GM) GM.restaurar(foco);
   }
 
   async function montagemSalvarMaquina(inp) {
@@ -309,6 +316,22 @@ window.MGAbas = (function () {
 
   function montagemIniciar() {
     $('sec-montagem').innerHTML = montagemHTML();
+    FM = MGFiltros.criar({ aoMudar: () => { M.pagina = 0; montagemRender(); }, colunas: [
+      { chave: 'maq', valor: l => l.maquina }, { chave: 'nreg', tipo: 'num', valor: l => l.nreg },
+      { chave: 'data', valor: l => l.data, mostrar: v => dBR(v) }, { chave: 'turno', valor: l => l.turno },
+      { chave: 'hant', valor: l => l.hora_ant }, { chave: 'hora', valor: l => l.hora },
+      { chave: 'tempo', tipo: 'num', valor: l => l.tempo_s, mostrar: v => dur(+v) }, { chave: 'id', tipo: 'num', valor: l => l.cod_id },
+      { chave: 'desc', valor: l => l.descricao }, { chave: 'obs', valor: l => l.obs }] });
+    FM.ligar($('mTabela'), () => montagemFiltradas());
+    MGZoom.anexar('mTabela');
+    const POR = 100;
+    GM = MGTeclado.grade($('mTabela'), { seletor: 'input.maq', chaveLinha: tr => tr.dataset.n,
+      aoBorda: (dir, col) => {
+        const tot = Math.ceil(FM.aplicar(montagemFiltradas()).length / POR);
+        if (dir === 'baixo' && M.pagina < tot - 1) { M.pagina++; montagemRender(); GM.focarPrimeira(col); return true; }
+        if (dir === 'cima' && M.pagina > 0) { M.pagina--; montagemRender(); GM.focarPrimeira(col, true); return true; }
+        return false;
+      } });
     if (!CTX.dona) $('mImportBtn').style.display = 'none';
     $('mImport').addEventListener('change', e => { const f = e.target.files[0]; if (f) montagemImportar(f); e.target.value = ''; });
     ['mIni', 'mFim', 'mTurno', 'mMaq', 'mFora'].forEach(id => $(id).addEventListener('change', () => { M.pagina = 0; montagemRender(); }));
@@ -339,6 +362,7 @@ window.MGAbas = (function () {
       <span class="muted" id="lResumo"></span>
       <button class="btn small" id="lCriar" type="button" hidden>Criar as linhas deste mês</button>
     </div>
+    <p class="muted" style="margin:0 0 8px">Teclado: setas andam entre as células. Num item, digite <b>V</b> (feita), <b>J</b> (justificada), <b>P</b> (erro de planejamento), <b>F</b> (faltou), <b>-</b> (não se aplica) ou <b>Delete</b> (apagar): salva e já passa para o próximo item. Enter abre o menu do item.</p>
     <div class="scroll"><table id="lTabela" class="limpeza"></table></div>
     <div id="lMenu" class="menu-item" hidden></div>`;
   }
@@ -352,7 +376,10 @@ window.MGAbas = (function () {
     } catch (e) { CTX.erro('Erro ao carregar a Limpeza: ' + e.message); $('lResumo').textContent = ''; }
   }
 
+  let GL = null;
+  const TECLA_ITEM = { v: 'V', j: 'J', p: 'P', f: 'F', '-': '-', delete: '', backspace: '' };
   function limpezaRender() {
+    const foco = GL && GL.lembrar();
     const hoje = hojeISO();
     const kp = ['A', 'B', 'C'].map(t => {
       const xs = L.linhas.filter(r => r.turno === t && r.data < hoje).map(r => MGPlanilha.totalLimpeza(r.itens));
@@ -384,17 +411,27 @@ window.MGAbas = (function () {
     h += '</tbody>';
     if (!regs.length) h = `<tbody><tr><td class="muted" style="padding:18px">Nenhuma linha neste mês${CTX.dona ? '. Use "Criar as linhas deste mês".' : '.'}</td></tr></tbody>`;
     $('lTabela').innerHTML = h;
+    if (GL) GL.restaurar(foco);
   }
 
   function limpezaReg(tr) { return L.linhas.find(r => r.data === tr.dataset.d && r.turno === tr.dataset.t); }
-  async function limpezaSalvar(r, tr) {
-    r.atualizado_em = new Date().toISOString();
-    if (tr) tr.classList.add('salvando');
-    const { error } = await sb.from('limpeza').upsert(r, { onConflict: 'data,turno' });
-    if (tr) tr.classList.remove('salvando');
-    if (error) { CTX.erro('Erro ao salvar a limpeza: ' + error.message); return false; }
-    CTX.aviso('Salvo');
-    return true;
+  // As gravações de uma mesma linha vão em fila (uma depois da outra), sempre com o estado mais recente:
+  // assim, digitando rápido vários itens, a última gravação é sempre a mais completa.
+  const filaLimpeza = new Map();
+  function limpezaSalvar(r, tr) {
+    const chave = r.data + '|' + r.turno;
+    const antes = filaLimpeza.get(chave) || Promise.resolve(true);
+    const agora = antes.then(async () => {
+      r.atualizado_em = new Date().toISOString();
+      if (tr) tr.classList.add('salvando');
+      const { error } = await sb.from('limpeza').upsert({ ...r, itens: (r.itens || []).slice() }, { onConflict: 'data,turno' });
+      if (tr) tr.classList.remove('salvando');
+      if (error) { CTX.erro('Erro ao salvar a limpeza: ' + error.message); return false; }
+      CTX.aviso('Salvo');
+      return true;
+    });
+    filaLimpeza.set(chave, agora.catch(() => false));
+    return agora;
   }
 
   function limpezaMenu(btn) {
@@ -446,6 +483,27 @@ window.MGAbas = (function () {
     $('lTurno').addEventListener('change', limpezaRender);
     $('lCriar').addEventListener('click', limpezaCriarMes);
     document.addEventListener('click', e => { const m = $('lMenu'); if (m && !m.hidden && !e.target.closest('#lMenu') && !e.target.closest('.it')) m.hidden = true; });
+    MGZoom.anexar('lTabela');
+    GL = MGTeclado.grade($('lTabela'), { seletor: 'button.it, input.li-ini, input.li-fim, input.li-pend, input.li-obs', chaveLinha: tr => tr.dataset.d + '|' + tr.dataset.t });
+    // Teclas no item: V feita · J justificada · P erro de planejamento · F faltou · - não se aplica · Delete apaga. Depois anda para a direita.
+    $('lTabela').addEventListener('keydown', async e => {
+      const it = e.target.closest && e.target.closest('button.it');
+      if (!it || !CTX.dona || e.ctrlKey || e.altKey || e.metaKey) return;
+      const k = TECLA_ITEM[e.key.toLowerCase()];
+      if (k === undefined) return;
+      e.preventDefault();
+      const tr = it.closest('tr'), i = Number(it.dataset.i), r = limpezaReg(tr); if (!r) return;
+      const n = Math.max(38, (r.itens || []).length);
+      const antes = r.itens;
+      r.itens = Array.from({ length: n }, (_, j) => (r.itens || [])[j] || '');
+      r.itens[i] = k;
+      const prox = Math.min(i + 1, n - 1);
+      // já mostra a mudança e passa para o próximo item; a gravação acontece em seguida
+      const o = ITEM[k]; it.className = 'it ' + o.cls; it.textContent = o.rot;
+      const seguinte = tr.querySelector(`button.it[data-i="${prox}"]`); if (seguinte) seguinte.focus();
+      if (!(await limpezaSalvar(r, null))) { r.itens = antes; }
+      limpezaRender();
+    });
     $('lTabela').addEventListener('click', async e => {
       if (!CTX.dona) return;
       const it = e.target.closest('button.it');
@@ -492,6 +550,7 @@ window.MGAbas = (function () {
       <span class="muted" id="oResumo"></span>
       <button class="btn small primary" id="oNova" type="button" hidden>Nova OS</button>
     </div>
+    <p class="muted" style="margin:0 0 8px">Teclado: setas andam entre as células (nos textos, ← → saem da célula no começo/fim do texto e ↑ ↓ na primeira/última linha). Tab também funciona.</p>
     <div class="scroll"><table id="oTabela"></table></div>`;
   }
 
@@ -514,7 +573,9 @@ window.MGAbas = (function () {
     }).join('');
   }
 
+  let GO = null;
   function osRender() {
+    const foco = GO && GO.lembrar();
     osKpis();
     const fM = $('oMant').value, fF = $('oFeitas').value;
     const regs = O.linhas.filter(o => (!fM || chave(o.mantenedor) === fM) && (!fF || (fF === '_vazio' ? !txt(o.feitas) : norm(o.feitas) === norm(fF))))
@@ -537,10 +598,13 @@ window.MGAbas = (function () {
     h += '</tbody>';
     if (!regs.length) h = '<tbody><tr><td class="muted" style="padding:18px">Nenhuma OS.</td></tr></tbody>';
     $('oTabela').innerHTML = h;
+    if (GO) GO.restaurar(foco);
   }
 
   function osIniciar() {
     $('sec-os').innerHTML = osHTML();
+    MGZoom.anexar('oTabela');
+    GO = MGTeclado.grade($('oTabela'), { seletor: 'input[data-k], select[data-k], textarea[data-k]', chaveLinha: tr => tr.dataset.id });
     $('oMant').addEventListener('change', osRender);
     $('oFeitas').addEventListener('change', osRender);
     $('oNova').addEventListener('click', async () => {
