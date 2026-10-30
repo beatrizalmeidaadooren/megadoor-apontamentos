@@ -53,6 +53,8 @@ window.MGPlanilha = (function () {
       MG.carregarTakt(),
       MG.buscarTudo('ajustes', '*').catch(() => [])
     ]).then(r => [...r.slice(0, 7), r[8]]);
+    const porOrdem = (a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9);
+    subgrupos.sort(porOrdem); programadas.sort(porOrdem);
     return { coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes };
   }
 

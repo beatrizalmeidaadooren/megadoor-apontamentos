@@ -172,6 +172,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     <button class="tab" role="tab" data-aba="limpeza" aria-selected="false">Limpeza</button>
     <button class="tab" role="tab" data-aba="os" aria-selected="false">OS</button>
     <button class="tab" role="tab" data-aba="takt" aria-selected="false">Takt time</button>
+    <button class="tab" role="tab" data-aba="menus" aria-selected="false" id="abaMenus" hidden>Menus</button>
   </nav>
   <main>
     <div id="msg" class="erro"></div>
@@ -225,6 +226,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     <section id="sec-limpeza" hidden></section>
     <section id="sec-os" hidden></section>
     <section id="sec-takt" hidden></section>
+    <section id="sec-menus" hidden></section>
 
     <!-- PAINEL MONTAGEM -->
     <section id="sec-painel" hidden>
@@ -247,10 +249,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-30i"></script>
-<script src="planilha.js?v=2026-10-30i"></script>
-<script src="filtros.js?v=2026-10-30i"></script>
-<script src="abas.js?v=2026-10-30i"></script>
+<script src="comum.js?v=2026-10-30j"></script>
+<script src="planilha.js?v=2026-10-30j"></script>
+<script src="filtros.js?v=2026-10-30j"></script>
+<script src="abas.js?v=2026-10-30j"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -303,9 +305,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     return 'pendente';
   }
   const ROT_OP = {pendente: 'Pendente', apontado: 'Apontado', turno_anterior: 'Turno anterior não preencheu', ignorada: 'Ignorada', na: '—'};
-  const naoProgramada = p => norm(p) === 'nao programada';
+  const naoProgramada = p => { const x = (S.programadasTodas || []).find(q => q.programada === p); return x ? !!x.exige_grupo : norm(p) === 'nao programada'; };
   const subsNP = () => S.subgrupos.filter(s => s.grupo);
-  function subDe(nome) { return S.subgrupos.find(s => s.subgrupo === nome) || null; }
+  function subDe(nome) { return (S.subgruposTodos || S.subgrupos).find(s => s.subgrupo === nome) || null; }
   function legado(s) { return s && S.legado[s] ? S.legado[s] : s; }
 
   /* ---------- carga ---------- */
@@ -318,8 +320,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     S.classif = {}; cls.forEach(c => S.classif[c.nreg] = c);
     S.aj = {}; (await MG.buscarTudo('ajustes', '*')).forEach(a => S.aj[a.nreg] = a);
     S.pend = {}; pen.forEach(p => S.pend[p.nreg] = p);
-    S.subgrupos = (sub.data || []).filter(s => s.ativo !== false);
-    S.programadas = prog.data || [];
+    const porOrdem = (a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || String(a.programada || a.subgrupo).localeCompare(String(b.programada || b.subgrupo), 'pt');
+    S.subgruposTodos = (sub.data || []).sort(porOrdem);
+    S.subgrupos = S.subgruposTodos.filter(s => s.ativo !== false);
+    S.programadasTodas = (prog.data || []).sort(porOrdem);
+    S.programadas = S.programadasTodas.filter(p => p.ativo !== false);
     S.legado = {}; (leg.data || []).forEach(x => S.legado[x.antigo] = x.novo);
     $('avisoTabelas').hidden = S.programadas.length > 0 && S.subgrupos.length > 0;
     // Confere a saúde dos dados do coletor: registros sem data e data do último registro.
@@ -367,17 +372,13 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   /* ---------- aba Apontamentos ---------- */
   // Seus ajustes nos campos do operador (tabela "ajustes"): o seu valor aparece no lugar do dele, em roxo.
   const AJ_CAMPOS = ['conjunto', 'item', 'problema', 'solucao'];
-  // Quais campos precisam ser preenchidos, conforme o subgrupo (ou a programada) da sua classificação.
-  // [conjunto, item, problema, solução]. O que não está aqui não precisa de nenhum.
-  const PRECISA = {
-    'Quebra de Máquina': [1, 1, 1, 1], 'Ajuste de ferragem': [1, 1, 1, 1], 'Troca de broca': [1, 1, 0, 0],
-    'Defeitos na usinagem': [1, 1, 1, 1], 'Defeitos nas primeiras do lote': [1, 1, 1, 1]
-  };
+  // Quais campos precisam ser preenchidos: definido por subgrupo (ou pela programada) na aba Menus.
+  const PRECISA_COL = ['precisa_conjunto', 'precisa_item', 'precisa_problema', 'precisa_solucao'];
   function camposPrecisa(l) {
     const c = S.classif[l.nreg]; if (!c || !c.programada) return [];
     const chave = c.subgrupo && c.subgrupo !== '-' ? c.subgrupo : c.programada;
-    const m = PRECISA[chave] || PRECISA[legado(chave)]; if (!m) return [];
-    return AJ_CAMPOS.filter((k, i) => m[i]);
+    const sg = subDe(chave) || subDe(legado(chave)); if (!sg) return [];
+    return AJ_CAMPOS.filter((k, i) => sg[PRECISA_COL[i]]);
   }
   const faltaCampo = (l, k) => camposPrecisa(l).includes(k) && !String(vl(l, k) || '').trim();
   const faltaAlgum = l => camposPrecisa(l).some(k => faltaCampo(l, k));
@@ -750,10 +751,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   function trocarAba(qual) {
     S.aba = qual;
     document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === qual));
-    ['apont', 'pend', 'radar', 'diverg', 'montagem', 'painel', 'limpeza', 'os', 'takt'].forEach(a => $('sec-' + a).hidden = a !== qual);
+    ['apont', 'pend', 'radar', 'diverg', 'montagem', 'painel', 'limpeza', 'os', 'takt', 'menus'].forEach(a => $('sec-' + a).hidden = a !== qual);
     if (qual === 'radar' && !$('frRadar').src) $('frRadar').src = 'radar.html?v=' + MG.VERSAO;
     if (qual === 'painel' && !$('frPainel').src) $('frPainel').src = 'painel.html?v=' + MG.VERSAO;
-    if (['montagem', 'limpeza', 'os', 'takt'].includes(qual)) MGAbas.abrir(qual, {dona: S.dona, aviso, erro: t => { $('msg').textContent = t; },
+    if (['montagem', 'limpeza', 'os', 'takt', 'menus'].includes(qual)) MGAbas.abrir(qual, {dona: S.dona, aviso, erro: t => { $('msg').textContent = t; },
+      aposMenus: async () => { try { await carregarApoio(); renderApont(); renderPareto(); } catch (e) { $('msg').textContent = 'Erro ao recarregar os menus: ' + e.message; } },
       aposTakt: () => { carregar(); const r = $('frRadar'); if (r.src) r.src = r.src; const pn = $('frPainel'); if (pn.contentWindow && pn.contentWindow.recarregarPainel) pn.contentWindow.recarregarPainel(); }});
   }
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { $('msg').textContent = ''; trocarAba(b.dataset.aba); }));
@@ -762,6 +764,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   async function entrar(sess) {
     S.sess = sess;
     S.dona = MG.ehDona(sess);
+    $('abaMenus').hidden = !S.dona;
     $('quem').textContent = sess.user.email;
     $('modo').textContent = S.dona ? 'Edição' : 'Somente leitura';
     mostrar('app');

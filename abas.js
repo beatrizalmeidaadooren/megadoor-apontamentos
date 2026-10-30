@@ -646,6 +646,172 @@ window.MGAbas = (function () {
     osCarregar();
   }
 
+  /* =================== MENUS (programadas e subgrupos) =================== */
+  const GRUPOS = ['Disponibilidade', 'Performance', 'Qualidade'];
+  const SEIS = ['Quebra ou Falha do Equipamento', 'Setup e Ajuste', 'Ociosidade e Pequenas Paradas', 'Velocidade Reduzida', 'Defeitos no processo', 'Defeitos de partida'];
+  const CAMPOS = [['precisa_conjunto', 'Conjunto'], ['precisa_item', 'Item'], ['precisa_problema', 'Problema'], ['precisa_solucao', 'Solução']];
+  const MN = { prog: [], sub: [] };
+  const porOrdem = (a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || String(a.programada || a.subgrupo).localeCompare(String(b.programada || b.subgrupo), 'pt');
+  function menusHTML() {
+    return `
+    <div class="card"><h2>Menus da classificação</h2>
+      <p class="muted" style="margin:6px 0 0;max-width:100ch">Aqui você muda as opções das listas <b>Programada</b> e <b>Subgrupo do OEE</b> da aba Apontamentos. Cada mudança salva na hora.
+      Desativar tira a opção das listas, mas as paradas já classificadas com ela continuam iguais. Renomear também renomeia nas paradas já classificadas.
+      ↑ ↓ mudam a ordem em que as opções aparecem nas listas.</p>
+    </div>
+    <div class="card"><h2 style="font-size:16px">Programadas</h2>
+      <p class="muted" style="margin:4px 0 8px">"Pede subgrupo" = ao escolher esta programada, você escolhe também um subgrupo do OEE (como na Não programada).</p>
+      <div class="scroll"><table id="mnProg"></table></div>
+      <div class="barra" style="margin:10px 0 0">
+        <label>Nova programada <input id="mnProgNome" style="width:220px"></label>
+        <label><input type="checkbox" id="mnProgExige"> pede subgrupo</label>
+        <button class="btn primary small" type="button" id="mnProgAdd">Adicionar</button>
+      </div>
+    </div>
+    <div class="card"><h2 style="font-size:16px">Subgrupos do OEE</h2>
+      <p class="muted" style="margin:4px 0 8px">Só os subgrupos <b>com grupo do OEE</b> aparecem na lista da Não programada. Os sem grupo são os das outras programadas (têm o mesmo nome delas).
+      As colunas Conjunto, Item, Problema e Solução dizem quais campos ficam marcados como "precisa preencher" nas paradas com este subgrupo.</p>
+      <div class="scroll"><table id="mnSub"></table></div>
+      <div class="barra" style="margin:10px 0 0">
+        <label>Novo subgrupo <input id="mnSubNome" style="width:220px"></label>
+        <label>Grupo <select id="mnSubGrupo"><option value="">— sem grupo</option>${GRUPOS.map(g => `<option>${g}</option>`).join('')}</select></label>
+        <label>6 Grandes Perdas <select id="mnSubSeis"><option value=""></option>${SEIS.map(g => `<option>${g}</option>`).join('')}</select></label>
+        <button class="btn primary small" type="button" id="mnSubAdd">Adicionar</button>
+      </div>
+    </div>`;
+  }
+  async function menusCarregar() {
+    const [p, s] = await Promise.all([sb.from('programadas').select('*'), sb.from('subgrupos').select('*')]);
+    if (p.error || s.error) { CTX.erro('Erro ao carregar os menus: ' + (p.error || s.error).message); return; }
+    MN.prog = p.data.sort(porOrdem); MN.sub = s.data.sort(porOrdem);
+    menusRender();
+  }
+  const ck = (cls, v, ed, extra) => `<input type="checkbox" class="${cls}" ${v ? 'checked' : ''} ${ed} ${extra || ''}>`;
+  const setas = (i, n, ed) => `<button class="btn small mn-mov" data-m="-1" type="button" title="Subir" ${ed || !i ? 'disabled' : ''}>↑</button><button class="btn small mn-mov" data-m="1" type="button" title="Descer" ${ed || i === n - 1 ? 'disabled' : ''}>↓</button>`;
+  function menusRender() {
+    const ed = CTX.dona ? '' : 'disabled';
+    let h = '<thead><tr><th>Ordem</th><th>Programada</th><th>Pede subgrupo</th><th>Ativa</th></tr></thead><tbody>';
+    MN.prog.forEach((p, i) => {
+      h += `<tr data-k="${esc(p.programada)}"${p.ativo === false ? ' style="opacity:.55"' : ''}><td>${setas(i, MN.prog.length, ed)}</td>
+        <td><input class="mn-nome" value="${esc(p.programada)}" ${ed} style="width:240px"></td>
+        <td style="text-align:center">${ck('mn-exige', p.exige_grupo, ed)}</td><td style="text-align:center">${ck('mn-ativo', p.ativo !== false, ed)}</td></tr>`;
+    });
+    $('mnProg').innerHTML = h + '</tbody>';
+    h = `<thead><tr><th>Ordem</th><th>Subgrupo do OEE</th><th>Grupo do OEE</th><th>6 Grandes Perdas</th>${CAMPOS.map(c => `<th>${c[1]}</th>`).join('')}<th>Ativo</th></tr></thead><tbody>`;
+    MN.sub.forEach((s, i) => {
+      const op = (lista, v) => `<option value=""></option>` + lista.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('') + (v && !lista.includes(v) ? `<option selected>${esc(v)}</option>` : '');
+      h += `<tr data-k="${esc(s.subgrupo)}"${s.ativo === false ? ' style="opacity:.55"' : ''}><td>${setas(i, MN.sub.length, ed)}</td>
+        <td><input class="mn-nome" value="${esc(s.subgrupo)}" ${ed} style="width:240px"></td>
+        <td><select class="mn-grupo" ${ed}>${op(GRUPOS, s.grupo)}</select></td><td><select class="mn-seis" ${ed}>${op(SEIS, s.seis_perdas)}</select></td>
+        ${CAMPOS.map(c => `<td style="text-align:center">${ck('mn-campo', s[c[0]], ed, `data-c="${c[0]}"`)}</td>`).join('')}
+        <td style="text-align:center">${ck('mn-ativo', s.ativo !== false, ed)}</td></tr>`;
+    });
+    $('mnSub').innerHTML = h + '</tbody>';
+    $('mnProgAdd').disabled = $('mnSubAdd').disabled = !CTX.dona;
+  }
+  async function mnFeito(msg) { CTX.aviso(msg || 'Salvo'); await menusCarregar(); if (CTX.aposMenus) CTX.aposMenus(); }
+  async function contarClassif(campo, valor) {
+    const { count } = await sb.from('classificacao').select('nreg', { count: 'exact', head: true }).eq(campo, valor);
+    return count || 0;
+  }
+  async function mnMover(lista, tabela, chave, k, d) {
+    const ord = lista.slice(), i = ord.findIndex(x => x[chave] === k), j = i + d;
+    if (i < 0 || j < 0 || j >= ord.length) return;
+    [ord[i], ord[j]] = [ord[j], ord[i]];
+    const mud = ord.map((x, n) => ({ x, n: n + 1 })).filter(o => o.x.ordem !== o.n);
+    for (const o of mud) {
+      const { error } = await sb.from(tabela).update({ ordem: o.n }).eq(chave, o.x[chave]);
+      if (error) { CTX.erro('Erro ao mudar a ordem: ' + error.message); return; }
+    }
+    await mnFeito('Ordem salva');
+  }
+  async function mnRenomear(tabela, chave, velho, inp) {
+    const novo = String(inp.value).replace(/\s+/g, ' ').trim();
+    if (!novo || novo === velho) { inp.value = velho; return; }
+    const lista = tabela === 'programadas' ? MN.prog : MN.sub;
+    if (lista.some(x => x[chave] === novo)) { CTX.erro(`Já existe "${novo}".`); inp.value = velho; return; }
+    const campo = tabela === 'programadas' ? 'programada' : 'subgrupo';
+    const n = await contarClassif(campo, velho);
+    if (!confirm(`Renomear "${velho}" para "${novo}"?` + (n ? ` As ${nf(n)} paradas já classificadas com ele também serão renomeadas.` : ''))) { inp.value = velho; return; }
+    let r = await sb.from(tabela).update({ [chave]: novo }).eq(chave, velho);
+    if (r.error) { CTX.erro('Erro ao renomear: ' + r.error.message); inp.value = velho; return; }
+    if (n) { r = await sb.from('classificacao').update({ [campo]: novo }).eq(campo, velho); if (r.error) { CTX.erro('Renomeado, mas houve erro nas paradas: ' + r.error.message); } }
+    // a programada sem subgrupo tem um subgrupo com o mesmo nome: renomeia junto
+    if (tabela === 'programadas' && MN.sub.some(x => x.subgrupo === velho) && !MN.sub.some(x => x.subgrupo === novo)) {
+      r = await sb.from('subgrupos').update({ subgrupo: novo }).eq('subgrupo', velho);
+      if (!r.error) r = await sb.from('classificacao').update({ subgrupo: novo }).eq('subgrupo', velho);
+      if (r.error) CTX.erro('Renomeado, mas houve erro no subgrupo de mesmo nome: ' + r.error.message);
+    }
+    await mnFeito('Renomeado');
+  }
+  function menusIniciar() {
+    $('sec-menus').innerHTML = menusHTML();
+    $('mnProg').addEventListener('click', e => {
+      const b = e.target.closest('.mn-mov'); if (!b || !CTX.dona) return;
+      mnMover(MN.prog, 'programadas', 'programada', b.closest('tr').dataset.k, Number(b.dataset.m));
+    });
+    $('mnSub').addEventListener('click', e => {
+      const b = e.target.closest('.mn-mov'); if (!b || !CTX.dona) return;
+      mnMover(MN.sub, 'subgrupos', 'subgrupo', b.closest('tr').dataset.k, Number(b.dataset.m));
+    });
+    $('mnProg').addEventListener('change', async e => {
+      if (!CTX.dona) return;
+      const k = e.target.closest('tr').dataset.k, t = e.target;
+      if (t.classList.contains('mn-nome')) return mnRenomear('programadas', 'programada', k, t);
+      const campo = t.classList.contains('mn-exige') ? 'exige_grupo' : 'ativo';
+      const { error } = await sb.from('programadas').update({ [campo]: t.checked }).eq('programada', k);
+      if (error) { CTX.erro('Erro ao salvar: ' + error.message); t.checked = !t.checked; return; }
+      await mnFeito();
+    });
+    $('mnSub').addEventListener('change', async e => {
+      if (!CTX.dona) return;
+      const k = e.target.closest('tr').dataset.k, t = e.target, s = MN.sub.find(x => x.subgrupo === k); if (!s) return;
+      if (t.classList.contains('mn-nome')) return mnRenomear('subgrupos', 'subgrupo', k, t);
+      if (t.classList.contains('mn-campo') || t.classList.contains('mn-ativo')) {
+        const campo = t.dataset.c || 'ativo';
+        const { error } = await sb.from('subgrupos').update({ [campo]: t.checked }).eq('subgrupo', k);
+        if (error) { CTX.erro('Erro ao salvar: ' + error.message); t.checked = !t.checked; return; }
+        return mnFeito();
+      }
+      const campo = t.classList.contains('mn-grupo') ? 'grupo' : 'seis_perdas', v = t.value || null;
+      const { error } = await sb.from('subgrupos').update({ [campo]: v }).eq('subgrupo', k);
+      if (error) { CTX.erro('Erro ao salvar: ' + error.message); return; }
+      const n = await contarClassif('subgrupo', k);
+      if (n && confirm(`Atualizar também o ${campo === 'grupo' ? 'grupo do OEE' : '6 Grandes Perdas'} das ${nf(n)} paradas já classificadas com "${k}"?\n\nOK = atualizar as antigas também · Cancelar = só as próximas`)) {
+        const r = await sb.from('classificacao').update({ [campo]: v || '-' }).eq('subgrupo', k);
+        if (r.error) CTX.erro('Erro ao atualizar as paradas: ' + r.error.message);
+      }
+      await mnFeito();
+    });
+    $('mnProgAdd').addEventListener('click', async () => {
+      const nome = $('mnProgNome').value.replace(/\s+/g, ' ').trim(), exige = $('mnProgExige').checked;
+      if (!nome) { CTX.erro('Digite o nome da programada.'); return; }
+      if (MN.prog.some(p => norm(p.programada) === norm(nome))) { CTX.erro(`Já existe a programada "${nome}".`); return; }
+      const ordem = MN.prog.reduce((a, p) => Math.max(a, p.ordem || 0), 0) + 1;
+      let r = await sb.from('programadas').insert({ programada: nome, exige_grupo: exige, ativo: true, ordem });
+      if (r.error) { CTX.erro('Erro ao adicionar: ' + r.error.message); return; }
+      // programada sem subgrupo usa um subgrupo com o mesmo nome (sem grupo do OEE), como as outras
+      if (!exige && !MN.sub.some(s => s.subgrupo === nome)) {
+        const os = MN.sub.reduce((a, s) => Math.max(a, s.ordem || 0), 0) + 1;
+        r = await sb.from('subgrupos').insert({ subgrupo: nome, grupo: null, seis_perdas: null, ativo: true, ordem: os });
+        if (r.error) CTX.erro('Programada criada, mas houve erro ao criar o subgrupo: ' + r.error.message);
+      }
+      $('mnProgNome').value = ''; $('mnProgExige').checked = false;
+      await mnFeito('Programada adicionada');
+    });
+    $('mnSubAdd').addEventListener('click', async () => {
+      const nome = $('mnSubNome').value.replace(/\s+/g, ' ').trim();
+      if (!nome) { CTX.erro('Digite o nome do subgrupo.'); return; }
+      if (MN.sub.some(s => norm(s.subgrupo) === norm(nome))) { CTX.erro(`Já existe o subgrupo "${nome}".`); return; }
+      const ordem = MN.sub.reduce((a, s) => Math.max(a, s.ordem || 0), 0) + 1;
+      const r = await sb.from('subgrupos').insert({ subgrupo: nome, grupo: $('mnSubGrupo').value || null, seis_perdas: $('mnSubSeis').value || null, ativo: true, ordem });
+      if (r.error) { CTX.erro('Erro ao adicionar: ' + r.error.message); return; }
+      $('mnSubNome').value = ''; $('mnSubGrupo').value = ''; $('mnSubSeis').value = '';
+      await mnFeito('Subgrupo adicionado');
+    });
+    menusCarregar();
+  }
+
   /* =================== TAKT TIME POR PERÍODO =================== */
   function taktHTML() {
     return `
@@ -722,7 +888,7 @@ window.MGAbas = (function () {
   function abrir(qual, ctx) {
     CTX = ctx;
     if (iniciadas[qual]) {
-      if (qual === 'montagem') montagemCarregar(); else if (qual === 'limpeza') limpezaCarregar(); else if (qual === 'os') osCarregar(); else if (qual === 'takt') taktCarregar();
+      if (qual === 'montagem') montagemCarregar(); else if (qual === 'limpeza') limpezaCarregar(); else if (qual === 'os') osCarregar(); else if (qual === 'takt') taktCarregar(); else if (qual === 'menus') menusCarregar();
       return;
     }
     iniciadas[qual] = true;
@@ -730,6 +896,7 @@ window.MGAbas = (function () {
     if (qual === 'limpeza') limpezaIniciar();
     if (qual === 'os') osIniciar();
     if (qual === 'takt') taktIniciar();
+    if (qual === 'menus') menusIniciar();
   }
   return { abrir, lerArquivoMontagem };
 })();
