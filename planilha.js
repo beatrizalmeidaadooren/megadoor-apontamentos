@@ -3,7 +3,6 @@
 // É usada pelo Painel Montagem (que lê essas abas exatamente como lia o arquivo) e pelo backup.
 // Precisa de: XLSX (SheetJS) e MG (comum.js).
 window.MGPlanilha = (function () {
-  const TAKT = 170, NOMINAL = 85;
   const COR = { verde: 'FF00B050', azul: 'FF0070C0', vermelho: 'FFFF0000', laranja: 'FFFFC000', cinza: 'FFD9D9D9' };
   const pad = n => String(n).padStart(2, '0');
 
@@ -50,7 +49,8 @@ window.MGPlanilha = (function () {
       MG.buscarTudo('limpeza', '*', null, ['data', 'turno']),
       MG.buscarTudo('os', '*', null, 'id'),
       MG.sb.from('subgrupos').select('*').then(r => { if (r.error) throw r.error; return r.data; }),
-      MG.sb.from('programadas').select('*').then(r => { if (r.error) throw r.error; return r.data; })
+      MG.sb.from('programadas').select('*').then(r => { if (r.error) throw r.error; return r.data; }),
+      MG.carregarTakt()
     ]);
     return { coletor, classif, montagem, limpeza, os, subgrupos, programadas };
   }
@@ -65,11 +65,12 @@ window.MGPlanilha = (function () {
     for (const l of d.coletor) {
       const c = cls[l.nreg] || {};
       const tc = l.t_ciclo_s;
+      const tk = MG.taktDe(l.dia || l.data_hora);
       const dia = l.dia || (l.data_hora ? String(l.data_hora).slice(0, 10) : null);
       const [y, m, dd] = dia ? dia.split('-').map(Number) : [null, null, null];
       linhas.push([l.nreg, serialDataHora(l.data_hora), serialDia(dia), dd, m, y, fracHora(l.hora), fracHora(l.hora_anterior),
-        tc, l.idturno, NOMINAL, tc == null ? null : tc - NOMINAL, TAKT, tc == null ? null : tc - TAKT,
-        tc == null ? null : (tc - TAKT) / NOMINAL, c.programada || null, c.grupo || null, c.seis_perdas || null, c.subgrupo || null,
+        tc, l.idturno, tk.nominal, tc == null ? null : tc - tk.nominal, tk.takt, tc == null ? null : tc - tk.takt,
+        tc == null ? null : (tc - tk.takt) / tk.nominal, c.programada || null, c.grupo || null, c.seis_perdas || null, c.subgrupo || null,
         l.oee_operador, l.conjunto, l.item, l.problema, l.solucao, l.observacao,
         l.qnt, l.qntdefeito != null ? l.qntdefeito : (l.qnt == null ? null : 0)]);
     }
@@ -197,6 +198,7 @@ window.MGPlanilha = (function () {
       if (d.montagem_historico) add('sis_montagem_historico', d.montagem_historico.map(r => ({ ...r, dados_antigos: JSON.stringify(r.dados_antigos), dados_novos: JSON.stringify(r.dados_novos) })));
       add('sis_subgrupos', d.subgrupos);
       add('sis_programadas', d.programadas);
+      add('sis_takt_periodos', MG.listaTakt());
       add('LEIA-ME', [{ 'Sobre este arquivo': 'Backup do sistema Megadoor gerado em ' + new Date().toLocaleString('pt-BR') },
         { 'Sobre este arquivo': 'As abas Apontamentos, menus, Limpeza, OS e apontamentos_montagem seguem o formato da planilha original.' },
         { 'Sobre este arquivo': 'As abas sis_* guardam as tabelas do sistema como estão. Em sis_limpeza, cada item é: V feita, J justificada, P erro de planejamento, F faltou, _ não preenchido, - não se aplica.' }]);

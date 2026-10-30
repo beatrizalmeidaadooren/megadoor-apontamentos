@@ -10,7 +10,7 @@ window.MG = (function () {
   const linkTipo = HASH.get('type') || QUERY.get('type');
   const linkErro = HASH.get('error_code') || HASH.get('error') || QUERY.get('error_code') || QUERY.get('error');
   const linkTokenHash = QUERY.get('token_hash');
-  const VERSAO = '2026-10-30b';
+  const VERSAO = '2026-10-30c';
   const sb = supabase.createClient(URL, CHAVE);
 
   // Link de e-mail no formato com token_hash (outros modelos de e-mail do Supabase): valida aqui.
@@ -62,5 +62,20 @@ window.MG = (function () {
     return tudo;
   }
 
-  return { sb, sessao, ehDona, buscarTudo, DONA, linkTipo, linkErro, pronto, VERSAO };
+  // Takt time e ciclo nominal por período: vale o período de início mais recente que não passa da data.
+  let TAKTS = [{ inicio: '2000-01-01', takt_s: 170, nominal_s: 85 }];
+  async function carregarTakt() {
+    const r = await sb.from('takt_periodos').select('*').order('inicio', { ascending: true });
+    if (!r.error && r.data && r.data.length) TAKTS = r.data;
+    return TAKTS;
+  }
+  function taktDe(dia) {
+    let atual = TAKTS[0];
+    for (const t of TAKTS) { if (!dia || t.inicio <= String(dia).slice(0, 10)) atual = t; else break; }
+    return { takt: atual.takt_s, nominal: atual.nominal_s };
+  }
+  const taktMinimo = () => Math.min(...TAKTS.map(t => t.takt_s));
+  const listaTakt = () => TAKTS.slice();
+
+  return { sb, sessao, ehDona, buscarTudo, DONA, linkTipo, linkErro, pronto, VERSAO, carregarTakt, taktDe, taktMinimo, listaTakt };
 })();

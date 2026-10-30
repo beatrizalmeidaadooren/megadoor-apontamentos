@@ -575,18 +575,90 @@ window.MGAbas = (function () {
     osCarregar();
   }
 
+  /* =================== TAKT TIME POR PERÍODO =================== */
+  function taktHTML() {
+    return `
+    <div class="card"><h2>Takt time por período</h2>
+      <p class="muted" style="margin:6px 0 0;max-width:95ch">Cada registro do coletor usa o takt e o ciclo nominal do período da sua data: vale a linha com o início mais recente que não passa daquela data. Uma parada é um ciclo acima do takt. O takt define as paradas, as pendências, o "fora do takt", os kits perdidos, o Radar e a Análise Megadoor. Para reduzir o takt aos poucos, acrescente um período novo com a data em que o valor novo começa a valer. Os períodos anteriores continuam com o valor antigo.</p>
+    </div>
+    <div class="kpis" id="tAtual"></div>
+    <div class="card" id="tForm" hidden>
+      <h2 style="font-size:16px">Novo período (ou alterar um existente com a mesma data de início)</h2>
+      <div class="barra" style="margin:10px 0 0">
+        <label>A partir de <input type="date" id="tInicio"></label>
+        <label>Takt (s) <input type="number" id="tTakt" min="1" step="1" style="width:90px"></label>
+        <label>Ciclo nominal (s) <input type="number" id="tNominal" min="1" step="1" style="width:90px"></label>
+        <label>Nota <input id="tNota" style="width:220px" placeholder="ex.: meta de dezembro"></label>
+        <button class="btn primary small" id="tSalvar" type="button">Salvar período</button>
+        <span class="muted" id="tMsg"></span>
+      </div>
+    </div>
+    <div class="scroll"><table id="tTabela"></table></div>`;
+  }
+  function taktRender() {
+    const lista = MG.listaTakt();
+    const hoje = hojeISO(), atual = MG.taktDe(hoje);
+    const vigente = lista.filter(t => t.inicio <= hoje).pop() || lista[0];
+    const prox = lista.find(t => t.inicio > hoje);
+    $('tAtual').innerHTML = `<div class="kpi"><span>Takt em vigor hoje</span><b>${atual.takt} s</b><span>desde ${dBR(vigente.inicio)}</span></div>
+      <div class="kpi"><span>Ciclo nominal em vigor</span><b>${atual.nominal} s</b></div>` +
+      (prox ? `<div class="kpi"><span>Próxima mudança</span><b>${prox.takt_s} s</b><span>a partir de ${dBR(prox.inicio)}</span></div>` : '');
+    let h = `<thead><tr><th>A partir de</th><th>Até</th><th>Takt (s)</th><th>Ciclo nominal (s)</th><th>Nota</th>${CTX.dona ? '<th></th>' : ''}</tr></thead><tbody>`;
+    lista.forEach((t, i) => {
+      const ate = lista[i + 1] ? (() => { const d = new Date(lista[i + 1].inicio + 'T12:00:00'); d.setDate(d.getDate() - 1); return dBR(d.toISOString().slice(0, 10)); })() : 'em diante';
+      h += `<tr data-i="${esc(t.inicio)}"${t === vigente ? ' class="hoje"' : ''}><td class="num">${dBR(t.inicio)}</td><td class="num">${ate}</td><td class="num"><b>${t.takt_s}</b></td><td class="num">${t.nominal_s}</td><td class="txt">${esc(t.nota || '')}</td>` +
+        (CTX.dona ? `<td>${lista.length > 1 ? '<button class="btn small t-del" type="button">Excluir</button>' : ''} <button class="btn small t-edit" type="button">Editar</button></td>` : '') + '</tr>';
+    });
+    $('tTabela').innerHTML = h + '</tbody>';
+    $('tForm').hidden = !CTX.dona;
+    if (!$('tTakt').value) { $('tTakt').value = atual.takt; $('tNominal').value = atual.nominal; }
+  }
+  async function taktCarregar() { await MG.carregarTakt(); taktRender(); }
+  function taktIniciar() {
+    $('sec-takt').innerHTML = taktHTML();
+    $('tSalvar').addEventListener('click', async () => {
+      const inicio = $('tInicio').value, takt = Number($('tTakt').value), nominal = Number($('tNominal').value);
+      if (!inicio) { $('tMsg').textContent = 'Escolha a data de início.'; return; }
+      if (!(takt > 0) || !(nominal > 0)) { $('tMsg').textContent = 'Takt e ciclo nominal precisam ser maiores que zero.'; return; }
+      if (inicio <= hojeISO() && !confirm(`O período começa em ${dBR(inicio)}, que já passou: as paradas, pendências e kits perdidos desde essa data serão recalculados com takt ${takt} s. Continuar?`)) return;
+      $('tSalvar').disabled = true;
+      const { error } = await sb.from('takt_periodos').upsert({ inicio, takt_s: takt, nominal_s: nominal, nota: txt($('tNota').value), atualizado_em: new Date().toISOString() }, { onConflict: 'inicio' });
+      $('tSalvar').disabled = false;
+      if (error) { CTX.erro('Erro ao salvar o período: ' + error.message); return; }
+      $('tMsg').textContent = ''; $('tNota').value = ''; CTX.aviso('Período salvo');
+      await taktCarregar(); if (CTX.aposTakt) CTX.aposTakt();
+    });
+    $('tTabela').addEventListener('click', async e => {
+      if (!CTX.dona) return;
+      const tr = e.target.closest('tr[data-i]'); if (!tr) return;
+      const t = MG.listaTakt().find(x => x.inicio === tr.dataset.i); if (!t) return;
+      if (e.target.classList.contains('t-edit')) {
+        $('tInicio').value = t.inicio; $('tTakt').value = t.takt_s; $('tNominal').value = t.nominal_s; $('tNota').value = t.nota || '';
+        $('tForm').scrollIntoView({ behavior: 'smooth' }); return;
+      }
+      if (e.target.classList.contains('t-del')) {
+        if (!confirm(`Excluir o período que começa em ${dBR(t.inicio)} (takt ${t.takt_s} s)? Essas datas passam a usar o período anterior.`)) return;
+        const { error } = await sb.from('takt_periodos').delete().eq('inicio', t.inicio);
+        if (error) { CTX.erro('Erro ao excluir: ' + error.message); return; }
+        CTX.aviso('Período excluído'); await taktCarregar(); if (CTX.aposTakt) CTX.aposTakt();
+      }
+    });
+    taktCarregar();
+  }
+
   const $ = id => document.getElementById(id);
   const iniciadas = {};
   function abrir(qual, ctx) {
     CTX = ctx;
     if (iniciadas[qual]) {
-      if (qual === 'montagem') montagemCarregar(); else if (qual === 'limpeza') limpezaCarregar(); else if (qual === 'os') osCarregar();
+      if (qual === 'montagem') montagemCarregar(); else if (qual === 'limpeza') limpezaCarregar(); else if (qual === 'os') osCarregar(); else if (qual === 'takt') taktCarregar();
       return;
     }
     iniciadas[qual] = true;
     if (qual === 'montagem') montagemIniciar();
     if (qual === 'limpeza') limpezaIniciar();
     if (qual === 'os') osIniciar();
+    if (qual === 'takt') taktIniciar();
   }
   return { abrir, lerArquivoMontagem };
 })();

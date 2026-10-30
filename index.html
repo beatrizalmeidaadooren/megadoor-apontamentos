@@ -165,6 +165,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     <button class="tab" role="tab" data-aba="painel" aria-selected="false">Painel Montagem</button>
     <button class="tab" role="tab" data-aba="limpeza" aria-selected="false">Limpeza</button>
     <button class="tab" role="tab" data-aba="os" aria-selected="false">OS</button>
+    <button class="tab" role="tab" data-aba="takt" aria-selected="false">Takt time</button>
   </nav>
   <main>
     <div id="msg" class="erro"></div>
@@ -177,7 +178,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         <label>De <input type="date" id="ini"></label>
         <label>até <input type="date" id="fim"></label>
         <button class="btn small" id="atualizar" type="button">Atualizar</button>
-        <label><input type="checkbox" id="soTakt" checked> Só paradas acima do takt (170 s)</label>
+        <label><input type="checkbox" id="soTakt" checked> Só paradas acima do takt</label>
         <label><input type="checkbox" id="semSistema" checked> Ocultar registros de sistema e reinício do coletor</label>
         <label>Turno <select id="fTurno"><option value="">Todos</option><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
         <label>Operador <select id="fOper"><option value="">Todas</option><option value="pendente">Pendente</option><option value="apontado">Apontado</option><option value="turno_anterior">Turno anterior não preencheu</option><option value="ignorada">Ignorada</option></select></label>
@@ -194,7 +195,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     <section id="sec-pend" hidden>
       <div class="card">
         <h2>Pendências do operador</h2>
-        <p class="muted" style="margin:6px 0 0;max-width:80ch">Paradas acima de 170 s, de qualquer data, que ainda não têm apontamento do operador. Saem desta lista quando o operador apontar (na próxima sincronização) ou quando você clicar em Ignorar. "Turno anterior não preencheu" conta como resolvida.</p>
+        <p class="muted" style="margin:6px 0 0;max-width:80ch">Paradas acima do takt time (do período de cada data), de qualquer data, que ainda não têm apontamento do operador. Saem desta lista quando o operador apontar (na próxima sincronização) ou quando você clicar em Ignorar. "Turno anterior não preencheu" conta como resolvida.</p>
       </div>
       <div class="barra">
         <label>Turno <select id="pTurno"><option value="">Todos</option><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
@@ -216,6 +217,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     <section id="sec-montagem" hidden></section>
     <section id="sec-limpeza" hidden></section>
     <section id="sec-os" hidden></section>
+    <section id="sec-takt" hidden></section>
 
     <!-- PAINEL MONTAGEM -->
     <section id="sec-painel" hidden>
@@ -238,13 +240,15 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-30b"></script>
-<script src="planilha.js?v=2026-10-30b"></script>
-<script src="abas.js?v=2026-10-30b"></script>
+<script src="comum.js?v=2026-10-30c"></script>
+<script src="planilha.js?v=2026-10-30c"></script>
+<script src="abas.js?v=2026-10-30c"></script>
 <script>
 (function () {
   const sb = MG.sb;
-  const TAKT = 170, NOMINAL = 85;
+  // Takt e ciclo nominal mudam por período (aba Takt time); cada registro usa o do seu dia.
+  const tk = l => MG.taktDe(l.dia || l.data_hora);
+  const acimaTakt = l => l.t_ciclo_s != null && l.t_ciclo_s > tk(l).takt;
   const TIPO_LINK = MG.linkTipo;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -282,7 +286,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   const ehTA = t => norm(t).startsWith('turno anterior');
   function ehSistema(l) { return l.menuid === 99999 || l.hora_anterior === '06:00:00'; }
   function sitOperador(l) {
-    if (l.t_ciclo_s == null || l.t_ciclo_s <= TAKT) return 'na';
+    if (!acimaTakt(l)) return 'na';
     const o = operTexto(l.oee_operador);
     if (o && ehTA(o)) return 'turno_anterior';
     if (o) return 'apontado';
@@ -328,18 +332,19 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   let seqCarga = 0, seqPend = 0;
   async function carregar() {
     const meu = ++seqCarga;
+    await MG.carregarTakt();
     $('msg').textContent = '';
     $('resumo').textContent = 'Carregando…';
     try {
       const ini = $('ini').value, fim = $('fim').value, so = $('soTakt').checked;
       const [linhas] = await Promise.all([
         MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,anulado,oee_operador,conjunto,problema,solucao,observacao,item',
-          q => { if (ini) q = q.gte('dia', ini); if (fim) q = q.lte('dia', fim); if (so) q = q.gt('t_ciclo_s', TAKT); return q; },
+          q => { if (ini) q = q.gte('dia', ini); if (fim) q = q.lte('dia', fim); if (so) q = q.gt('t_ciclo_s', MG.taktMinimo()); return q; },
           'nreg', (a, t) => { $('resumo').textContent = `Carregando ${nf(a)} de ${nf(t)}…`; }),
         carregarApoio()
       ]);
       if (meu !== seqCarga) return;   // uma carga mais nova já foi pedida
-      S.linhas = linhas.reverse();
+      S.linhas = (so ? linhas.filter(acimaTakt) : linhas).reverse();
       S.pagina = 0;
       renderApont();
       renderPareto();
@@ -370,12 +375,12 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
   function renderApont() {
     const L = filtradas();
-    const acima = L.filter(l => l.t_ciclo_s > TAKT);
+    const acima = L.filter(acimaTakt);
     const cont = {pendente: 0, apontado: 0, turno_anterior: 0, ignorada: 0};
     acima.forEach(l => { const s = sitOperador(l); if (s in cont) cont[s]++; });
     const minhas = acima.filter(l => S.classif[l.nreg] && S.classif[l.nreg].programada).length;
     $('kpis').innerHTML = `
-      <div class="kpi"><span>Paradas acima de ${TAKT} s</span><b>${nf(acima.length)}</b></div>
+      <div class="kpi"><span>Paradas acima do takt</span><b>${nf(acima.length)}</b></div>
       <div class="kpi"><span>Apontadas pelo operador</span><b>${nf(cont.apontado)}</b></div>
       <div class="kpi"><span>Turno anterior não preencheu</span><b>${nf(cont.turno_anterior)}</b></div>
       <div class="kpi"><span>Pendentes</span><b style="color:var(--bad)">${nf(cont.pendente)}</b></div>
@@ -397,7 +402,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       const c = S.classif[l.nreg] || {};
       const sit = sitOperador(l);
       const tc = l.t_ciclo_s;
-      const fora = tc != null ? tc - TAKT : null;
+      const tkl = tk(l);
+      const fora = tc != null ? tc - tkl.takt : null;
       const np = naoProgramada(c.programada);
       let acao = '';
       if (S.dona && sit === 'pendente') acao = ` <button class="btn small ign" type="button">Ignorar</button>`;
@@ -405,8 +411,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       h += `<tr data-n="${l.nreg}">
         <td class="num">${l.nreg}</td><td class="num">${esc((l.data_hora || '').slice(0, 19).replace('T', ' '))}</td>
         <td>${esc(TURNO[l.idturno] || l.idturno || '')}</td><td class="num">${esc(l.hora_anterior || '')}</td><td class="num">${esc(l.hora || '')}</td>
-        <td class="num">${tc == null ? '' : nf(tc)}</td><td class="num">${tc == null ? '' : nf(tc - NOMINAL)}</td>
-        <td class="num">${fora == null ? '' : nf(fora)}</td><td class="num">${fora == null ? '' : n1(fora / NOMINAL)}</td>
+        <td class="num">${tc == null ? '' : nf(tc)}</td><td class="num">${tc == null ? '' : nf(tc - tkl.nominal)}</td>
+        <td class="num">${fora == null ? '' : nf(fora)}</td><td class="num" title="takt ${tkl.takt} s · nominal ${tkl.nominal} s">${fora == null ? '' : n1(fora / tkl.nominal)}</td>
         <td class="mine"><select class="prog" ${ed}><option value=""></option>${progOpts}</select></td>
         <td class="mine grp">${esc(c.grupo || '')}</td><td class="mine seis">${esc(c.seis_perdas || '')}</td>
         <td class="mine">${np ? `<select class="sub" ${ed}><option value=""></option>${subOpts}</select>` : `<span class="subtx">${esc(c.subgrupo || '')}</span>`}</td>
@@ -435,7 +441,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   function analiseHTML(acima) {
     const n = acima.filter(l => l.t_ciclo_s > 0);
     if (!n.length) return '';
-    const soma = xs => xs.reduce((a, l) => a + (l.t_ciclo_s - TAKT), 0);
+    const soma = xs => xs.reduce((a, l) => a + (l.t_ciclo_s - tk(l).takt), 0);
+    const kits = xs => xs.reduce((a, l) => a + (l.t_ciclo_s - tk(l).takt) / tk(l).nominal, 0);
     const h = s => (s / 3600).toLocaleString('pt-BR', {maximumFractionDigits: 1}) + ' h';
     const cls = l => S.classif[l.nreg] || {};
     const setup = n.filter(l => norm(cls(l).seis_perdas) === 'setup e ajuste');
@@ -443,7 +450,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const media = n.reduce((a, l) => a + l.t_ciclo_s, 0) / n.length;
     return `
       <div class="kpi"><span>Média do ciclo (paradas)</span><b>${nf(Math.round(media))} s</b></div>
-      <div class="kpi"><span>Kits perdidos</span><b>${n1(soma(n) / NOMINAL)}</b></div>
+      <div class="kpi"><span>Kits perdidos</span><b>${n1(kits(n))}</b></div>
       <div class="kpi"><span>Tempo perdido acima do takt</span><b>${h(soma(n))}</b></div>
       <div class="kpi"><span>Tempo perdido por setup</span><b>${h(soma(setup))}</b></div>
       <div class="kpi"><span>Tempo perdido por quebra</span><b>${h(soma(quebra))}</b></div>`;
@@ -511,9 +518,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   /* ---------- aba Pendências (todas as datas) ---------- */
   async function carregarPendencias() {
     const meu = ++seqPend;
+    await MG.carregarTakt();
     try {
       const todas = (await MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,oee_operador,observacao',
-        q => q.gt('t_ciclo_s', TAKT))).filter(l => !ehSistema(l));
+        q => q.gt('t_ciclo_s', MG.taktMinimo()))).filter(l => !ehSistema(l) && acimaTakt(l));
       if (meu !== seqPend) return;
       S.pendTodas = todas;
       renderPend();
@@ -572,7 +580,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const cont = {};
     let total = 0, iguais = 0, soMinha = 0, soOper = 0;
     S.linhas.forEach(l => {
-      if (l.t_ciclo_s == null || l.t_ciclo_s <= TAKT || ehSistema(l)) return;
+      if (!acimaTakt(l) || ehSistema(l)) return;
       const c = S.classif[l.nreg];
       const op = operTexto(l.oee_operador);
       const temMinha = c && c.programada;
@@ -636,10 +644,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   function trocarAba(qual) {
     S.aba = qual;
     document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === qual));
-    ['apont', 'pend', 'radar', 'diverg', 'montagem', 'painel', 'limpeza', 'os'].forEach(a => $('sec-' + a).hidden = a !== qual);
+    ['apont', 'pend', 'radar', 'diverg', 'montagem', 'painel', 'limpeza', 'os', 'takt'].forEach(a => $('sec-' + a).hidden = a !== qual);
     if (qual === 'radar' && !$('frRadar').src) $('frRadar').src = 'radar.html?v=' + MG.VERSAO;
     if (qual === 'painel' && !$('frPainel').src) $('frPainel').src = 'painel.html?v=' + MG.VERSAO;
-    if (['montagem', 'limpeza', 'os'].includes(qual)) MGAbas.abrir(qual, {dona: S.dona, aviso, erro: t => { $('msg').textContent = t; }});
+    if (['montagem', 'limpeza', 'os', 'takt'].includes(qual)) MGAbas.abrir(qual, {dona: S.dona, aviso, erro: t => { $('msg').textContent = t; },
+      aposTakt: () => { carregar(); const r = $('frRadar'); if (r.src) r.src = r.src; const pn = $('frPainel'); if (pn.contentWindow && pn.contentWindow.recarregarPainel) pn.contentWindow.recarregarPainel(); }});
   }
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { $('msg').textContent = ''; trocarAba(b.dataset.aba); }));
   $('recarregarPainel').addEventListener('click', () => { const f = $('frPainel'); if (f.contentWindow && f.contentWindow.recarregarPainel) f.contentWindow.recarregarPainel(); else f.src = 'painel.html?v=' + MG.VERSAO; });

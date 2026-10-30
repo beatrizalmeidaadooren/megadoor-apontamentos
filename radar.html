@@ -174,7 +174,7 @@ tr.outros td{color:var(--warn);font-weight:600}
   </div>
 
   <div class="rules" id="rules">
-    <label>Parada acima de <input type="number" id="limiar" min="1" step="1"> s</label>
+    <label title="Vazio = usa o takt time de cada período (aba Takt time do sistema)">Parada acima de <input type="number" id="limiar" min="1" step="1" placeholder="takt"> s</label>
     <label>Ignorar paradas acima de <input type="number" id="maxH" min="0" step="0.5" placeholder="—"> h</label>
     <label><input type="checkbox" id="anulados"> Ignorar anulados</label>
     <label title="O coletor grava estes registros no meio de uma parada; a mesma parada já aparece no registro seguinte."><input type="checkbox" id="sistema"> Ignorar registros de sistema (menuid 99999)</label>
@@ -225,14 +225,15 @@ tr.outros td{color:var(--warn);font-weight:600}
 <textarea id="clip" aria-hidden="true" tabindex="-1" style="position:fixed;left:-9999px;top:0;width:1px;height:1px"></textarea>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-10-30b"></script>
+<script src="comum.js?v=2026-10-30c"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
-const DEF={ini:'',fim:'',sistema:true,reinicio:true,limiar:170,maxH:'',anulados:true,madrugada:true,turnoMad:'3',horaMad:6,verm:80,verde:95};
+const DEF={ini:'',fim:'',sistema:true,reinicio:true,limiar:'',maxH:'',anulados:true,madrugada:true,turnoMad:'3',horaMad:6,verm:80,verde:95};
 let S=Object.assign({},DEF);
-try{Object.assign(S,JSON.parse(localStorage.getItem('radar-apont-v3')||'{}'))}catch(e){}
-function save(){try{localStorage.setItem('radar-apont-v3',JSON.stringify(S))}catch(e){}}
+try{Object.assign(S,JSON.parse(localStorage.getItem('radar-apont-v4')||'{}'))}catch(e){}
+function limTxt(){return +S.limiar>0?'de '+(+S.limiar)+' s':'do takt'}
+function save(){try{localStorage.setItem('radar-apont-v4',JSON.stringify(S))}catch(e){}}
 
 let BASE=[],SRC={kind:'sample'},PERIOD=null,TAB='dia',PEND=null,R=null,COPY='',STATUS='all';
 
@@ -370,7 +371,7 @@ function isInfo(p){const ob=norm((p.x&&p.x.ob)||'');return !norm(p.o).startsWith
 function compute(){
   const seen=new Set(),P=[];let dup=0,anul=0,total=0,reset=0,longo=0,curtos=0,fora=0,minD=null,maxD=null,sisN=0,reiN=0,lastD=null,lastH=null;const rec=new Map();
   const mx=parseFloat(String(S.maxH).replace(',','.'));const maxS=mx>0?mx*3600:Infinity;
-  const lim=+S.limiar||170,hm=(+S.horaMad||0)*3600,tm=String(S.turnoMad).trim();
+  const limFixo=+S.limiar>0?+S.limiar:null,hm=(+S.horaMad||0)*3600,tm=String(S.turnoMad).trim();
   for(const r of BASE){
     if(r.n!=null){if(seen.has(r.n)){dup++;continue}seen.add(r.n)}
     total++;
@@ -384,6 +385,7 @@ function compute(){
     if(S.sistema&&r.sys){sisN++;continue}
     if(r.s<0){reset++;continue}
     if(S.reinicio&&r.rs){reiN++;continue}
+    const lim=limFixo||MG.taktDe(r.d).takt;   // vazio = takt time do período da data
     if(r.s<=lim){if(r.o!=='')curtos++;continue}
     if(r.s>maxS){longo++;continue}
     const ta=r.o!==''&&isTA(r.o)?1:0;
@@ -422,7 +424,7 @@ function render(){
   $('#ini').min=$('#fim').min=R.minD||'';$('#ini').max=$('#fim').max=R.maxD||'';
   $('#rangeHint').textContent=R.minD?('A planilha vai de '+fb(R.minD)+' a '+fb(R.maxD)+'.'+(S.ini||S.fim?' Analisando '+(S.ini?'de '+fb(S.ini):'desde o início')+(S.fim?' até '+fb(S.fim):' até o fim')+'.':'')):'';
   renderToday();renderPeriod();renderKpis();renderRank();renderTab();
-  $('#legend').innerHTML=`<span><i class="bad"></i>abaixo de ${+S.verm}%</span><span><i class="warn"></i>${+S.verm}% a ${+S.verde}%</span><span><i class="good"></i>${+S.verde}% ou mais</span><span><i class="empty"></i>sem paradas acima de ${+S.limiar}s</span>`;
+  $('#legend').innerHTML=`<span><i class="bad"></i>abaixo de ${+S.verm}%</span><span><i class="warn"></i>${+S.verm}% a ${+S.verde}%</span><span><i class="good"></i>${+S.verde}% ou mais</span><span><i class="empty"></i>sem paradas acima ${limTxt()}</span>`;
 }
 function dayCards(day,isLast){
   return R.turnos.map(t=>{
@@ -430,7 +432,7 @@ function dayCards(day,isLast){
     const rc=R.rec.get(day+'|'+t)||0,pc=pct(f,n);
     let sub;
     if(n)sub=f+' de '+n+' apontadas pelo turno'+(ta?' · '+ta+' deixadas para o seguinte':'')+' · '+(n-f-ta)+' não preenchidas';
-    else if(rc)sub=nf(rc)+' registros, nenhuma parada acima de '+(+S.limiar)+' s';
+    else if(rc)sub=nf(rc)+' registros, nenhuma parada acima '+limTxt();
     else sub=isLast?'sem registros ainda (turno não começou ou planilha termina antes)':'sem registros neste dia';
     return `<button class="shift ${cls(pc)} cellbtn" style="text-align:left;cursor:pointer;font:inherit" data-col="day" data-v="${day}" data-t="${esc(t)}" title="Ver as paradas deste turno">
       <span class="nm">${esc(tLabel(t))}</span><span class="big">${fmtP(pc)}</span><span class="sub">${sub}</span></button>`;
@@ -452,7 +454,7 @@ function renderKpis(){
   let n=0,f=0,ta=0;for(const p of R.P)if(inPeriod(p)){n++;f+=p.f;ta+=p.ta}
   const pc=pct(f,n);
   $('#kpis').innerHTML=`
-    <div class="kpi"><span>Paradas acima de ${+S.limiar}s</span><b>${nf(n)}</b></div>
+    <div class="kpi"><span>Paradas acima ${limTxt()}</span><b>${nf(n)}</b></div>
     <div class="kpi"><span>Apontadas pelo próprio turno</span><b>${nf(f)}</b></div>
     <div class="kpi"><span>Deixadas para o turno seguinte</span><b>${nf(ta)}</b></div>
     <div class="kpi"><span>Não preenchidas</span><b>${nf(n-f-ta)}</b></div>
@@ -529,7 +531,7 @@ function renderTab(){
     const cnt=new Map();for(const p of list){let o=cnt.get(p.o);if(!o){o={all:0};cnt.set(p.o,o)}o.all++;o[p.t]=(o[p.t]||0)+1}
     const arr=[...cnt.entries()].sort((a,b)=>b[1].all-a[1].all),mx=arr.length?arr[0][1].all:1;
     const outros=arr.filter(([k])=>norm(k).startsWith('outro')).reduce((a,[,o])=>a+o.all,0);
-    hint.textContent=(PERIOD==='all'?'Todo o período':mLabel(PERIOD))+'. '+(list.length?'"Outros" representa '+Math.round(outros/list.length*100)+'% dos apontamentos. Se essa parte cresce, o % de preenchimento sobe mas a informação fica mais pobre.':'')+(R.curtos?' Há também '+nf(R.curtos)+' apontamentos em paradas de até '+(+S.limiar)+'s, que não entram no cálculo.':'');
+    hint.textContent=(PERIOD==='all'?'Todo o período':mLabel(PERIOD))+'. '+(list.length?'"Outros" representa '+Math.round(outros/list.length*100)+'% dos apontamentos. Se essa parte cresce, o % de preenchimento sobe mas a informação fica mais pobre.':'')+(R.curtos?' Há também '+nf(R.curtos)+' apontamentos em paradas de até '+limTxt().replace(/^de |^do /,'')+', que não entram no cálculo.':'');
     body.innerHTML=list.length?`<div class="scroll"><table class="list"><thead><tr><th>Motivo (Oee)</th>${R.turnos.map(t=>`<th>${esc(tLabel(t))}</th>`).join('')}<th>Total</th><th>%</th><th style="width:30%"></th></tr></thead><tbody>${arr.map(([k,o])=>`<tr class="${norm(k).startsWith('outro')?'outros':''}"><td>${esc(k)}</td>${R.turnos.map(t=>`<td class="num">${o[t]||0}</td>`).join('')}<td class="num">${o.all}</td><td class="num">${Math.round(o.all/list.length*100)}%</td><td><div class="bar" style="width:${o.all/mx*100}%"></div></td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">Nenhum apontamento no período.</p>';
     COPY=[['Motivo',...R.turnos.map(tLabel),'Total'],...arr.map(([k,o])=>[k,...R.turnos.map(t=>o[t]||0),o.all])].map(r=>r.join('\t')).join('\n');
   }
@@ -573,6 +575,7 @@ $('#btnSample').addEventListener('click',()=>{BASE=sample();SRC={kind:'sample'};
 /* ---------- leitura do sistema (Supabase) ---------- */
 async function carregarDoSistema(){
   status('Carregando os dados do sistema…');
+  try{await MG.carregarTakt()}catch(e){}
   try{
     const sess=await MG.sessao();
     if(!sess){status('Faça login na página inicial do sistema para ver o Radar.',true);return}
