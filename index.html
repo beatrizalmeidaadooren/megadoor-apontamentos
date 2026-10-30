@@ -77,6 +77,9 @@ td.txt{white-space:normal;min-width:110px;max-width:240px}
 td.mine{background:color-mix(in srgb,var(--info-bg) 45%,transparent)}
 td.eu,td.eu input{background:var(--eu-bg);color:var(--eu);font-weight:600}
 input.aj{width:150px;font:inherit;padding:3px 5px;border:1px solid var(--line,#ccc);border-radius:4px;background:transparent;color:inherit}
+td.precisa input.aj{border:1.5px dashed var(--warn);background:var(--warn-bg)}
+td.precisa input.aj::placeholder{color:var(--warn);font-weight:600;opacity:1}
+.legenda-precisa{display:inline-block;border:1.5px dashed var(--warn);background:var(--warn-bg);color:var(--warn);font-weight:600;border-radius:4px;padding:0 6px}
 .legenda-eu{display:inline-block;background:var(--eu-bg);color:var(--eu);font-weight:600;border-radius:4px;padding:1px 6px}
 td select{max-width:210px}
 tr.salvando td{opacity:.6}
@@ -185,11 +188,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         <label><input type="checkbox" id="semSistema" checked> Ocultar registros de sistema e reinício do coletor</label>
         <label>Turno <select id="fTurno"><option value="">Todos</option><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
         <label>Operador <select id="fOper"><option value="">Todas</option><option value="pendente">Pendente</option><option value="apontado">Apontado</option><option value="turno_anterior">Turno anterior não preencheu</option><option value="ignorada">Ignorada</option></select></label>
-        <label>Minha classificação <select id="fMinha"><option value="">Todas</option><option value="falta">Falta classificar</option><option value="feita">Classificada</option></select></label>
+        <label>Minha classificação <select id="fMinha"><option value="">Todas</option><option value="falta">Falta classificar</option><option value="feita">Classificada</option><option value="campos">Falta conjunto/item/problema/solução</option></select></label>
         <label>Buscar <input type="search" id="fBusca" placeholder="texto ou registro" style="width:150px"></label>
         <span class="muted" id="resumo"></span>
       </div>
-      <p class="muted" style="margin:-4px 0 10px">Teclado: ↑ ↓ ← → andam entre as células de Programada e Subgrupo; digite a primeira letra para escolher (ex.: N para "Não programada") ou Enter para abrir a lista. Cada escolha salva na hora.</p>
+      <p class="muted" style="margin:-4px 0 10px">Teclado: ↑ ↓ ← → andam entre as células (Programada, Subgrupo, Conjunto, Item, Problema, Solução e Minhas observações); digite a primeira letra para escolher (ex.: N para "Não programada") ou Enter para abrir a lista. Cada escolha salva na hora.</p>
       <div class="kpis" id="kpis"></div>
       <div class="scroll"><table id="tabela"></table></div>
       <div class="pag" id="pag"></div>
@@ -244,10 +247,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-30h"></script>
-<script src="planilha.js?v=2026-10-30h"></script>
-<script src="filtros.js?v=2026-10-30h"></script>
-<script src="abas.js?v=2026-10-30h"></script>
+<script src="comum.js?v=2026-10-30i"></script>
+<script src="planilha.js?v=2026-10-30i"></script>
+<script src="filtros.js?v=2026-10-30i"></script>
+<script src="abas.js?v=2026-10-30i"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -364,14 +367,29 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   /* ---------- aba Apontamentos ---------- */
   // Seus ajustes nos campos do operador (tabela "ajustes"): o seu valor aparece no lugar do dele, em roxo.
   const AJ_CAMPOS = ['conjunto', 'item', 'problema', 'solucao'];
+  // Quais campos precisam ser preenchidos, conforme o subgrupo (ou a programada) da sua classificação.
+  // [conjunto, item, problema, solução]. O que não está aqui não precisa de nenhum.
+  const PRECISA = {
+    'Quebra de Máquina': [1, 1, 1, 1], 'Ajuste de ferragem': [1, 1, 1, 1], 'Troca de broca': [1, 1, 0, 0],
+    'Defeitos na usinagem': [1, 1, 1, 1], 'Defeitos nas primeiras do lote': [1, 1, 1, 1]
+  };
+  function camposPrecisa(l) {
+    const c = S.classif[l.nreg]; if (!c || !c.programada) return [];
+    const chave = c.subgrupo && c.subgrupo !== '-' ? c.subgrupo : c.programada;
+    const m = PRECISA[chave] || PRECISA[legado(chave)]; if (!m) return [];
+    return AJ_CAMPOS.filter((k, i) => m[i]);
+  }
+  const faltaCampo = (l, k) => camposPrecisa(l).includes(k) && !String(vl(l, k) || '').trim();
+  const faltaAlgum = l => camposPrecisa(l).some(k => faltaCampo(l, k));
   const ajDe = l => (S.aj && S.aj[l.nreg]) || null;
   const vl = (l, k) => { const a = ajDe(l); return a && a[k] != null ? a[k] : l[k]; };
   const ehMeu = (l, k) => { const a = ajDe(l); return !!(a && a[k] != null); };
   function celulaAj(l, k) {
-    const meu = ehMeu(l, k), v = vl(l, k) || '';
-    const dica = meu ? `Preenchido por você. Original do operador: ${l[k] ? l[k] : '(vazio)'}` : (l[k] ? 'Preenchido pelo operador' : '');
-    if (!S.dona) return `<td class="txt${meu ? ' eu' : ''}" title="${esc(dica)}">${esc(v)}</td>`;
-    return `<td class="${meu ? 'eu' : ''}"><input class="aj" data-k="${k}" value="${esc(v)}" title="${esc(dica)}"></td>`;
+    const meu = ehMeu(l, k), v = vl(l, k) || '', falta = faltaCampo(l, k);
+    const dica = falta ? 'Precisa preencher (pela classificação desta parada)' : meu ? `Preenchido por você. Original do operador: ${l[k] ? l[k] : '(vazio)'}` : (l[k] ? 'Preenchido pelo operador' : '');
+    const cls = [meu ? 'eu' : '', falta ? 'precisa' : ''].filter(Boolean).join(' ');
+    if (!S.dona) return `<td class="txt ${cls}" title="${esc(dica)}">${falta ? '<span class="legenda-precisa">preencher</span>' : esc(v)}</td>`;
+    return `<td class="${cls}"><input class="aj" data-k="${k}" value="${esc(v)}" title="${esc(dica)}"${falta ? ' placeholder="preencher"' : ''}></td>`;
   }
   function filtradas() {
     const t = $('fTurno').value, o = $('fOper').value, m = $('fMinha').value, b = norm($('fBusca').value), ss = $('semSistema').checked;
@@ -382,6 +400,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       const c = S.classif[l.nreg];
       if (m === 'feita' && !(c && c.programada)) return false;
       if (m === 'falta' && (c && c.programada)) return false;
+      if (m === 'campos' && !faltaAlgum(l)) return false;
       if (b) {
         const txt = norm([l.nreg, l.oee_operador, vl(l, 'conjunto'), vl(l, 'problema'), vl(l, 'solucao'), l.observacao, vl(l, 'item'), (ajDe(l) || {}).obs, c && c.programada, c && c.subgrupo].join(' '));
         if (!txt.includes(b)) return false;
@@ -432,7 +451,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       <div class="kpi"><span>Turno anterior não preencheu</span><b>${nf(cont.turno_anterior)}</b></div>
       <div class="kpi"><span>Pendentes</span><b style="color:var(--bad)">${nf(cont.pendente)}</b></div>
       <div class="kpi"><span>Classificadas por você</span><b style="color:var(--info)">${nf(minhas)}</b></div>` + analiseHTML(acima);
-    $('resumo').innerHTML = `${nf(L.length)} registros no filtro · <span class="legenda-eu" title="Conjunto, item, problema ou solução preenchidos/alterados por você. Passe o mouse para ver o original do operador. Apague o campo para voltar ao valor do operador.">roxo = preenchido por você</span>` + (FA.ativos() ? ` · ${FA.ativos()} filtro(s) de coluna <button class="btn small" type="button" id="limparFA">Limpar filtros das colunas</button>` : '');
+    $('resumo').innerHTML = `${nf(L.length)} registros no filtro · <span class="legenda-precisa" title="Campos que precisam ser preenchidos pela classificação (ex.: Quebra de Máquina). Use &quot;Minha classificação &gt; Falta conjunto/item/problema/solução&quot; para ver só essas linhas.">tracejado = precisa preencher (${nf(L.filter(faltaAlgum).length)} linhas)</span> · <span class="legenda-eu" title="Conjunto, item, problema ou solução preenchidos/alterados por você. Passe o mouse para ver o original do operador. Apague o campo para voltar ao valor do operador.">roxo = preenchido por você</span>` + (FA.ativos() ? ` · ${FA.ativos()} filtro(s) de coluna <button class="btn small" type="button" id="limparFA">Limpar filtros das colunas</button>` : '');
     if ($('limparFA')) $('limparFA').onclick = () => FA.limpar();
 
     const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
@@ -591,8 +610,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     if (k !== 'obs') {
       const td = inp.closest('td'), meu = ehMeu(l, k);
       td.classList.toggle('eu', meu);
+      const falta = faltaCampo(l, k); td.classList.toggle('precisa', falta); inp.placeholder = falta ? 'preencher' : '';
       if (document.activeElement !== inp) inp.value = vl(l, k) || '';
-      inp.title = meu ? `Preenchido por você. Original do operador: ${l[k] ? l[k] : '(vazio)'}` : (l[k] ? 'Preenchido pelo operador' : '');
+      inp.title = falta ? 'Precisa preencher (pela classificação desta parada)' : meu ? `Preenchido por você. Original do operador: ${l[k] ? l[k] : '(vazio)'}` : (l[k] ? 'Preenchido pelo operador' : '');
     }
   }
   $('tabela').addEventListener('click', async e => {

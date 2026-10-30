@@ -255,7 +255,7 @@ window.MGZoom = (function () {
       <button class="btn" type="button" data-z="+" title="Aumentar">A+</button>
       <button class="btn" type="button" data-z="fit" title="Diminui até todas as colunas caberem na largura da tela">Caber na largura</button>
       <button class="btn" type="button" data-z="1" title="Voltar ao tamanho normal">100%</button>
-      <button class="btn" type="button" data-z="col" title="Escolher quais colunas aparecem">Colunas</button>`;
+      <button class="btn" type="button" data-z="col" title="Escolher quais colunas aparecem e a ordem delas">Colunas</button>`;
     caixa.parentElement.insertBefore(barra, caixa);
     let z = ler(tabelaId) || 1;
     const aplicar = v => {
@@ -283,7 +283,33 @@ window.MGZoom = (function () {
     const estilo = document.createElement('style'); document.head.appendChild(estilo);
     let ocultas;
     try { ocultas = new Set(JSON.parse(localStorage.getItem('mg-colunas-' + tabelaId) || '[]')); } catch (e) { ocultas = new Set(); }
-    const nomeTh = th => th.childNodes[0] ? String(th.childNodes[0].textContent).trim() : th.textContent.trim();
+    const nomeTh0 = th => th.childNodes[0] ? String(th.childNodes[0].textContent).trim() : th.textContent.trim();
+    const nomeTh = th => nomeTh0(th) || ('(coluna ' + (th.dataset.pos || '') + ')');
+    // ---- ordem das colunas (lembrada por nome; "Ordem padrão" volta ao original) ----
+    let ordemSalva = null, padrao = [];
+    try { ordemSalva = JSON.parse(localStorage.getItem('mg-ordem-' + tabelaId) || 'null'); } catch (e) { ordemSalva = null; }
+    const nomesAtuais = () => [...tab.querySelectorAll('thead th')].map(nomeTh);
+    function juntar(salva, base) {          // a ordem salva + colunas novas no lugar de origem
+      const r = salva.filter(n => base.includes(n));
+      base.forEach((n, i) => { if (r.includes(n)) return; const ant = base.slice(0, i).reverse().find(x => r.includes(x)); r.splice(ant ? r.indexOf(ant) + 1 : 0, 0, n); });
+      return r;
+    }
+    function reordenar(alvo) {
+      const atual = nomesAtuais(); const n = atual.length;
+      const perm = alvo.map(x => atual.indexOf(x));
+      if (perm.length !== n || perm.some(i => i < 0) || perm.every((p, i) => p === i)) return;
+      const foco = document.activeElement, tinha = tab.contains(foco);
+      tab.querySelectorAll('tr').forEach(tr => {
+        const cel = [...tr.children]; if (cel.length !== n) return;
+        perm.forEach(i => tr.appendChild(cel[i]));
+      });
+      if (tinha && foco.isConnected && document.activeElement !== foco) foco.focus({ preventScroll: true });
+    }
+    function aoRedesenhar() {
+      tab.querySelectorAll('thead th').forEach((th, i) => th.dataset.pos = i + 1);
+      padrao = nomesAtuais();
+      if (ordemSalva) reordenar(juntar(ordemSalva, padrao));
+    }
     function aplicarColunas() {
       const ths = [...tab.querySelectorAll('thead th')];
       estilo.textContent = ths.map((th, i) => ocultas.has(nomeTh(th)) ? `#${tabelaId} tr > :nth-child(${i + 1}){display:none}` : '').join('\n');
@@ -291,16 +317,31 @@ window.MGZoom = (function () {
     }
     function colunas(btn) {
       const velho = document.querySelector('.fpop'); if (velho) velho.remove();
-      const ths = [...tab.querySelectorAll('thead th')].map(nomeTh).filter(Boolean);
       const pop = document.createElement('div');
       pop.className = 'fpop';
-      pop.innerHTML = '<b>Colunas visíveis</b><div class="flista" style="margin-top:6px">' +
-        ths.map(n => `<label><input type="checkbox" data-c="${n.replace(/"/g, '&quot;')}" ${ocultas.has(n) ? '' : 'checked'}> <span>${n}</span></label>`).join('') +
-        '</div><div class="facoes"><button class="btn small" type="button" data-a="todas">Mostrar todas</button><button class="btn small primary" type="button" data-a="ok">Fechar</button></div>';
+      const q = n => n.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+      const lista = () => nomesAtuais().map((n, i, a) => `<div class="fordem" style="display:flex;align-items:center;gap:4px">
+          <label style="flex:1"><input type="checkbox" data-c="${q(n)}" ${ocultas.has(n) ? '' : 'checked'}> <span>${q(n)}</span></label>
+          <button class="btn small" type="button" data-m="-1" data-c="${q(n)}" title="Mover para a esquerda" ${i ? '' : 'disabled'}>↑</button>
+          <button class="btn small" type="button" data-m="1" data-c="${q(n)}" title="Mover para a direita" ${i < a.length - 1 ? '' : 'disabled'}>↓</button></div>`).join('');
+      const desenhar = () => { pop.querySelector('.flista').innerHTML = lista(); };
+      pop.innerHTML = '<b>Colunas</b><div class="muted" style="font-size:12px;margin:2px 0 4px">Marque as que aparecem. ↑ ↓ mudam a ordem (↑ = mais para a esquerda).</div><div class="flista" style="margin-top:6px;max-height:360px;overflow:auto"></div>' +
+        '<div class="facoes"><button class="btn small" type="button" data-a="todas">Mostrar todas</button><button class="btn small" type="button" data-a="padrao">Ordem padrão</button><button class="btn small primary" type="button" data-a="ok">Fechar</button></div>';
+      desenhar();
       pop.addEventListener('change', e => { const n = e.target.dataset.c; if (n == null) return; e.target.checked ? ocultas.delete(n) : ocultas.add(n); salvarCol(); aplicarColunas(); });
       pop.addEventListener('click', e => {
+        const m = e.target.closest('[data-m]');
+        if (m) {
+          const ord = nomesAtuais(), i = ord.indexOf(m.dataset.c), j = i + Number(m.dataset.m);
+          if (i < 0 || j < 0 || j >= ord.length) return;
+          [ord[i], ord[j]] = [ord[j], ord[i]];
+          ordemSalva = ord; salvarOrdem(); reordenar(ord); aplicarColunas(); desenhar();
+          const b = pop.querySelector(`[data-m="${m.dataset.m}"][data-c="${CSS.escape(m.dataset.c)}"]`); if (b && !b.disabled) b.focus();
+          return;
+        }
         const a = e.target.dataset.a; if (!a) return;
         if (a === 'todas') { ocultas.clear(); salvarCol(); aplicarColunas(); pop.querySelectorAll('input').forEach(i => i.checked = true); }
+        if (a === 'padrao') { ordemSalva = null; salvarOrdem(); reordenar(padrao); aplicarColunas(); desenhar(); }
         if (a === 'ok') pop.remove();
       });
       document.body.appendChild(pop);
@@ -310,11 +351,12 @@ window.MGZoom = (function () {
       const fora = ev => { if (!pop.contains(ev.target) && ev.target !== btn) { pop.remove(); document.removeEventListener('mousedown', fora); } };
       setTimeout(() => document.addEventListener('mousedown', fora), 0);
     }
+    function salvarOrdem() { try { ordemSalva ? localStorage.setItem('mg-ordem-' + tabelaId, JSON.stringify(ordemSalva)) : localStorage.removeItem('mg-ordem-' + tabelaId); } catch (e) {} }
     function salvarCol() { try { localStorage.setItem('mg-colunas-' + tabelaId, JSON.stringify([...ocultas])); } catch (e) {} }
     aplicar(z);
     // "Caber na largura" continua valendo quando a tabela é redesenhada ou a janela muda de tamanho
-    new MutationObserver(() => { aplicarColunas(); }).observe(tab, { childList: true });
-    aplicarColunas();
+    new MutationObserver(() => { aoRedesenhar(); aplicarColunas(); }).observe(tab, { childList: true });
+    aoRedesenhar(); aplicarColunas();
     window.addEventListener('resize', () => { if (ajusteAuto[tabelaId]) caber(); });
   }
   return { anexar };
