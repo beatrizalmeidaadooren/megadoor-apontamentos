@@ -141,6 +141,10 @@ window.MGFiltros = (function () {
 //  - Enter num campo de texto desce para a linha de baixo (como no Excel).
 //  - lembrar()/restaurar() recolocam o foco na mesma célula depois que a tabela é redesenhada.
 window.MGTeclado = (function () {
+  const cssG = document.createElement('style');   // célula selecionada bem visível, também quando escolhida com o mouse
+  cssG.textContent = `.mg-grade td:focus-within{box-shadow:inset 0 0 0 2px var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+    .mg-grade select:focus,.mg-grade input:focus,.mg-grade textarea:focus,.mg-grade button.it:focus{outline:2px solid var(--accent);outline-offset:1px}`;
+  document.head.appendChild(cssG);
   function grade(tabela, o) {
     const sel = o.seletor;
     const celulas = () => [...tabela.querySelectorAll(sel)].filter(e => !e.disabled && e.offsetParent !== null);
@@ -166,6 +170,20 @@ window.MGTeclado = (function () {
       if (alvo) { alvo.focus(); if (alvo.select && alvo.type !== 'select-one' && alvo.tagName !== 'BUTTON') alvo.select(); return true; }
       return false;
     }
+    // Guarda a última célula usada: se o foco "cair" (menu que fecha, linha redesenhada), a célula volta a ficar selecionada.
+    let ultimo = null;
+    const memo = el => {
+      const { tr, col } = pos(el);
+      const iguais = [...tr.querySelectorAll(sel)].filter(e => pos(e).col === col);
+      const linhas = [...new Set(celulas().map(e => e.closest('tr')))];
+      return { linha: o.chaveLinha(tr), col, i: iguais.indexOf(el), idx: linhas.indexOf(tr) };
+    };
+    tabela.classList.add('mg-grade');
+    tabela.addEventListener('focusin', e => { if (e.target.matches && e.target.matches(sel)) ultimo = memo(e.target); });
+    document.addEventListener('focusin', e => {   // foi para outro campo fora da tabela (filtro, busca...): esquece
+      const t = e.target;
+      if (t && t !== document.body && !tabela.contains(t) && !(t.closest && t.closest('.menu-item'))) ultimo = null;
+    });
     tabela.addEventListener('keydown', e => {
       const el = e.target;
       if (!el.matches || !el.matches(sel) || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -190,11 +208,9 @@ window.MGTeclado = (function () {
     return {
       lembrar() {
         const el = document.activeElement;
-        if (!el || !tabela.contains(el) || !el.matches(sel)) return null;
-        const { tr, col } = pos(el);
-        const iguais = [...tr.querySelectorAll(sel)].filter(e => pos(e).col === col);
-        const linhas = [...new Set(celulas().map(e => e.closest('tr')))];
-        return { linha: o.chaveLinha(tr), col, i: iguais.indexOf(el), idx: linhas.indexOf(tr) };
+        if (el && tabela.contains(el) && el.matches(sel)) return memo(el);
+        const solto = !el || el === document.body || !document.contains(el) || (el.closest && el.closest('.menu-item'));
+        return solto ? ultimo : null;
       },
       restaurar(m) {
         if (!m) return;
@@ -206,7 +222,7 @@ window.MGTeclado = (function () {
         }
         const daCol = [...tr.querySelectorAll(sel)].filter(e => pos(e).col === m.col);
         const el = daCol[Math.max(0, Math.min(m.i, daCol.length - 1))] || tr.querySelector(sel);
-        if (el) el.focus();
+        if (el && !el.disabled) el.focus({ preventScroll: true });
       },
       focarPrimeira(col, ultima) {
         const todas = celulas().filter(e => col == null || pos(e).col === col);

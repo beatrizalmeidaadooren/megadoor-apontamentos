@@ -437,6 +437,7 @@ window.MGAbas = (function () {
   function limpezaMenu(btn) {
     const menu = $('lMenu');
     const tr = btn.closest('tr'), i = Number(btn.dataset.i);
+    L.menuBtn = btn;
     menu.innerHTML = '<div class="muted">Só este item</div>' +
       Object.entries(ITEM).map(([k, o]) => `<button type="button" data-k="${k}"><i class="it ${o.cls}">${o.rot}</i>${o.nome}</button>`).join('') +
       '<div class="muted" style="margin-top:6px">Todos os itens que se aplicam a este turno</div>' +
@@ -447,6 +448,7 @@ window.MGAbas = (function () {
     menu.hidden = false;
     menu.onclick = async e => {
       const b = e.target.closest('button[data-k]'); if (!b) return;
+      if (btn.isConnected) btn.focus({ preventScroll: true });   // a célula continua selecionada para seguir com as setas
       menu.hidden = true;
       const r = limpezaReg(tr); if (!r) return;
       const n = Math.max(38, (r.itens || []).length);
@@ -482,6 +484,10 @@ window.MGAbas = (function () {
     $('lMes').addEventListener('change', limpezaRender);
     $('lTurno').addEventListener('change', limpezaRender);
     $('lCriar').addEventListener('click', limpezaCriarMes);
+    document.addEventListener('keydown', e => {   // Esc fecha o menu do item e volta para a célula
+      const m = $('lMenu'); if (!m || m.hidden || e.key !== 'Escape') return;
+      m.hidden = true; if (L.menuBtn && L.menuBtn.isConnected) L.menuBtn.focus({ preventScroll: true });
+    });
     document.addEventListener('click', e => { const m = $('lMenu'); if (m && !m.hidden && !e.target.closest('#lMenu') && !e.target.closest('.it')) m.hidden = true; });
     MGZoom.anexar('lTabela');
     GL = MGTeclado.grade($('lTabela'), { seletor: 'button.it, input.li-ini, input.li-fim, input.li-pend, input.li-obs', chaveLinha: tr => tr.dataset.d + '|' + tr.dataset.t });
@@ -512,6 +518,7 @@ window.MGAbas = (function () {
         const tr = e.target.closest('tr'); const r = limpezaReg(tr); if (!r) return;
         const antes = r.itens;
         r.itens = Array.from({ length: Math.max(38, (r.itens || []).length) }, (_, k) => ((r.itens || [])[k] === '-' ? '-' : 'V'));
+        const primeiro = tr.querySelector('button.it'); if (primeiro) primeiro.focus({ preventScroll: true });
         if (!(await limpezaSalvar(r, tr))) r.itens = antes;
         limpezaRender();
       }
