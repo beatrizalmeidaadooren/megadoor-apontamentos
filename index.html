@@ -148,6 +148,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       <div class="muted"><span id="quem"></span> · <span id="modo"></span></div>
     </div>
     <div class="acoes">
+      <span class="muted" id="sincMsg" title="Situação da sincronização com o banco do coletor"></span>
+      <button class="btn" id="btnSinc" type="button" hidden title="Pede ao computador da Beatriz para buscar agora os registros novos do coletor">Atualizar dados do coletor</button>
       <span class="muted" id="backupMsg"></span>
       <button class="btn" id="btnBackup" type="button" title="Baixa um Excel com todos os dados do sistema">Baixar backup (Excel)</button>
       <button class="btn" id="btnTrocarSenha" type="button">Trocar senha</button>
@@ -236,9 +238,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-29d"></script>
-<script src="planilha.js?v=2026-10-29d"></script>
-<script src="abas.js?v=2026-10-29d"></script>
+<script src="comum.js?v=2026-10-30a"></script>
+<script src="planilha.js?v=2026-10-30a"></script>
+<script src="abas.js?v=2026-10-30a"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -650,7 +652,62 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const hoje = new Date(), ini = new Date(hoje); ini.setDate(hoje.getDate() - 30);
     $('ini').value = ini.getFullYear() + '-' + pad(ini.getMonth() + 1) + '-' + pad(ini.getDate());
     $('fim').value = hojeISO();
+    $('btnSinc').hidden = !S.dona;
+    mostrarSinc();
+    setInterval(() => { if (!S.pedindo) mostrarSinc(); }, 60000);
     await carregar();
+  }
+
+  /* ---------- botão "Atualizar dados do coletor" ----------
+     O site não alcança o banco do coletor (fica na rede da empresa). O botão grava um pedido no sistema;
+     o programa de sincronização no computador da Beatriz olha os pedidos a cada 30 s e sincroniza na hora. */
+  async function lerSinc() {
+    const {data, error} = await sb.from('configuracao').select('valor').eq('chave', 'sincronizacao').maybeSingle();
+    if (error) return null;
+    return (data && data.valor) || {};
+  }
+  const hhmm = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR').slice(0, 5) + ' às ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  async function mostrarSinc() {
+    const v = await lerSinc();
+    if (!v) return null;
+    let t = v.fim ? 'Coletor sincronizado em ' + hhmm(v.fim) : '';
+    if (v.estado === 'erro') t += ' (com erro)';
+    if (v.estado === 'pedido') t = 'Atualização pedida, aguardando o computador…';
+    if (v.estado === 'rodando') t = 'Atualizando os dados do coletor…';
+    $('sincMsg').textContent = t;
+    $('sincMsg').title = v.mensagem || '';
+    return v;
+  }
+  async function pedirSinc() {
+    const b = $('btnSinc'); if (b.disabled) return;
+    b.disabled = true; S.pedindo = true;
+    try {
+      const atual = (await lerSinc()) || {};
+      const pedidoEm = new Date();
+      const {error} = await sb.from('configuracao').upsert({chave: 'sincronizacao',
+        valor: {...atual, estado: 'pedido', pedido_em: pedidoEm.toISOString(), pedido_por: S.sess.user.email}}, {onConflict: 'chave'});
+      if (error) throw new Error(error.message);
+      $('sincMsg').textContent = 'Pedido enviado, aguardando o computador…';
+      const limite = Date.now() + 6 * 60000;
+      while (Date.now() < limite) {
+        await new Promise(r => setTimeout(r, 5000));
+        const v = await lerSinc();
+        if (!v) continue;
+        if (v.estado === 'rodando') $('sincMsg').textContent = 'Atualizando os dados do coletor…';
+        else if (v.estado === 'pedido' && Date.now() - pedidoEm > 90000)
+          $('sincMsg').textContent = 'O computador ainda não respondeu (ele precisa estar ligado, com a sessão aberta). Continuo aguardando…';
+        if ((v.estado === 'ok' || v.estado === 'erro') && v.fim && new Date(v.fim) >= pedidoEm) {
+          if (v.estado === 'erro') { $('msg').textContent = 'A atualização terminou com erro: ' + (v.mensagem || 'veja o sincronizacao.log'); }
+          else aviso(`Atualizado: ${nf(v.enviados || 0)} registros novos ou alterados`);
+          await mostrarSinc();
+          carregar();
+          return;
+        }
+      }
+      $('sincMsg').textContent = 'O computador não respondeu em 6 minutos. O pedido continua valendo e será atendido quando ele estiver ligado.';
+    } catch (e) {
+      $('msg').textContent = 'Não consegui pedir a atualização: ' + e.message;
+    } finally { b.disabled = false; S.pedindo = false; }
   }
 
   $('formLogin').addEventListener('submit', async (e) => {
@@ -666,6 +723,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   ['semSistema', 'fTurno', 'fOper', 'fMinha'].forEach(id => $(id).addEventListener('change', () => { S.pagina = 0; renderApont(); }));
   let tBusca; $('fBusca').addEventListener('input', () => { clearTimeout(tBusca); tBusca = setTimeout(() => { S.pagina = 0; renderApont(); }, 250); });
   $('btnBackup').addEventListener('click', baixarBackup);
+  $('btnSinc').addEventListener('click', pedirSinc);
 
   $('formSenha').addEventListener('submit', async (e) => {
     e.preventDefault();
