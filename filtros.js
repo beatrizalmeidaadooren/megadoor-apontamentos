@@ -442,6 +442,14 @@ window.MGEscolha = (function () {
       if (e.key === 'Enter') { e.preventDefault(); abrir(el, ''); return; }
       if (e.key.length === 1 && e.key !== ' ') { e.preventDefault(); abrir(el, e.key); }
     }, true);
+    // clique com o mouse também abre a lista com busca (a lista nativa do navegador pula para o 10 ao digitar 1)
+    tabela.addEventListener('mousedown', e => {
+      const el = e.target.closest && e.target.closest('select');
+      if (!el || !el.matches(seletor) || el.disabled || e.button !== 0) return;
+      e.preventDefault();
+      el.focus({ preventScroll: true });
+      abrir(el, '');
+    }, true);
   }
   return { anexar, usa, abrir };
 })();
