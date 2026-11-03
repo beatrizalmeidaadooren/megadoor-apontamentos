@@ -379,7 +379,7 @@ function realce(nome, q, esc) {
 }
 window.MGEscolha = (function () {
   const css = document.createElement('style');
-  css.textContent = `.mg-esc{position:absolute;z-index:70;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);padding:6px;width:300px;font:13px var(--sans)}
+  css.textContent = `.mg-esc{position:absolute;z-index:95;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);padding:6px;width:300px;font:13px var(--sans)}
     .mg-esc input{width:100%;box-sizing:border-box;padding:5px 7px;border:1.5px solid var(--accent);border-radius:5px;font:inherit;background:var(--surface);color:var(--ink)}
     .mg-esc ul{list-style:none;margin:6px 0 0;padding:0;max-height:300px;overflow:auto}
     .mg-esc li{padding:4px 7px;border-radius:4px;cursor:pointer;display:flex;gap:8px}
