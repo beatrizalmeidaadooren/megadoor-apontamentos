@@ -229,7 +229,7 @@ tr.outros td{color:var(--warn);font-weight:600}
 <textarea id="clip" aria-hidden="true" tabindex="-1" style="position:fixed;left:-9999px;top:0;width:1px;height:1px"></textarea>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-11-03i"></script>
+<script src="comum.js?v=2026-11-03j"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -407,6 +407,8 @@ function compute(){
 }
 function run(){
   R=compute();
+  // com datas escolhidas ("De"/"Até"), mostra o intervalo inteiro, mesmo passando de um mês para o outro
+  if(PERIOD==null&&(S.ini||S.fim))PERIOD='all';
   if(PERIOD!=='all'&&!R.months.includes(PERIOD))PERIOD=R.months[R.months.length-1]||'all';
   render();
 }
@@ -550,7 +552,7 @@ function renderTab(){
 /* ---------- eventos ---------- */
 const fields=['ini','fim','sistema','reinicio','limiar','maxH','anulados','madrugada','turnoMad','horaMad','verm','verde'];
 for(const k of fields){const el=$('#'+k);if(el.type==='checkbox')el.checked=!!S[k];else el.value=S[k];
-  el.addEventListener('change',()=>{S[k]=el.type==='checkbox'?el.checked:el.value;save();run()})}
+  el.addEventListener('change',()=>{S[k]=el.type==='checkbox'?el.checked:el.value;if(k==='ini'||k==='fim'){PERIOD=(S.ini||S.fim)?'all':null;PEND=null}save();run()})}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{TAB=b.dataset.tab;if(TAB!=='pend')PEND=null;renderTab()}));
 $('#period').addEventListener('click',e=>{const b=e.target.closest('[data-period]');if(!b)return;PERIOD=b.dataset.period;PEND=null;renderPeriod();renderKpis();renderRank();renderTab()});
 document.addEventListener('click',e=>{
@@ -579,7 +581,7 @@ document.addEventListener('paste',e=>{
   e.preventDefault();
   try{load(parseText(txt),'Dados colados')}catch(err){status(err.message,true)}
 });
-$('#btnLimpar').addEventListener('click',()=>{S.ini='';S.fim='';$('#ini').value='';$('#fim').value='';save();run()});
+$('#btnLimpar').addEventListener('click',()=>{S.ini='';S.fim='';$('#ini').value='';$('#fim').value='';PERIOD=null;save();run()});
 $('#btnSample').addEventListener('click',()=>{BASE=sample();SRC={kind:'sample'};PERIOD=null;PEND=null;run()});
 
 
