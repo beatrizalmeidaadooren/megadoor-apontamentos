@@ -53,7 +53,7 @@ window.MGPlanilha = (function () {
       MG.carregarTakt(),
       MG.buscarTudo('ajustes', '*').catch(() => []),
       MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte']).catch(() => []),
-      MG.buscarTudo('catalogo', '*').catch(() => [])
+      MG.buscarTudo('catalogo', '*', null, 'id').catch(() => [])
     ]).then(r => [...r.slice(0, 7), r[8], r[9], r[10]]);
     const porOrdem = (a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9);
     subgrupos.sort(porOrdem); programadas.sort(porOrdem);

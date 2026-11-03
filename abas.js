@@ -900,7 +900,7 @@ window.MGAbas = (function () {
       const b = $('ctImportar'); b.disabled = true; $('ctMsg').textContent = 'Lendo…';
       try {
         const [os, col, aj] = await Promise.all([
-          MG.buscarTudo('os', 'conjunto,item,problema,solucao'),
+          MG.buscarTudo('os', 'id,conjunto,item,problema,solucao', null, 'id'),
           MG.buscarTudo('coletor', 'nreg,conjunto,item,problema,solucao', q => q.not('conjunto', 'is', null)),
           MG.buscarTudo('ajustes', '*')]);
         const ajN = {}; aj.forEach(a => ajN[a.nreg] = a);

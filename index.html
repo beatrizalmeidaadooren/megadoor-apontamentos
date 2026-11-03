@@ -263,10 +263,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-03g"></script>
-<script src="planilha.js?v=2026-11-03g"></script>
-<script src="filtros.js?v=2026-11-03g"></script>
-<script src="abas.js?v=2026-11-03g"></script>
+<script src="comum.js?v=2026-11-03h"></script>
+<script src="planilha.js?v=2026-11-03h"></script>
+<script src="filtros.js?v=2026-11-03h"></script>
+<script src="abas.js?v=2026-11-03h"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -334,8 +334,15 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     for (const r of [sub, prog, leg]) if (r.error) throw new Error(r.error.message);
     S.classif = {}; cls.forEach(c => S.classif[c.nreg] = c);
     S.aj = {}; (await MG.buscarTudo('ajustes', '*')).forEach(a => S.aj[a.nreg] = a);
-    S.cat = (await MG.buscarTudo('catalogo', '*').catch(() => [])).filter(c => c.ativo !== false)
+    S.cat = (await MG.buscarTudo('catalogo', '*', null, 'id').catch(e => { console.warn(e); return []; })).filter(c => c.ativo !== false)
       .sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || String(a.nome).localeCompare(String(b.nome), 'pt'));
+    // combinações já usadas (OS, seus ajustes e o que o operador escreveu): também entram nas sugestões
+    const [osU, colU] = await Promise.all([MG.buscarTudo('os', 'id,conjunto,item,problema,solucao', null, 'id').catch(() => []),
+      MG.buscarTudo('coletor', 'nreg,conjunto,item,problema,solucao', q => q.not('conjunto', 'is', null)).catch(() => [])]);
+    const limpaU = v => { const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return /^[-.?\s]*$/.test(t) ? '' : t; };
+    const colAj = colU.map(l => { const a = S.aj[l.nreg] || {}; const o = {}; ['conjunto', 'item', 'problema', 'solucao'].forEach(k => o[k] = a[k] != null ? a[k] : l[k]); return o; });
+    S.usados = osU.concat(colAj, Object.values(S.aj).filter(a => !colU.some(l => l.nreg === a.nreg)))
+      .map(o => ['conjunto', 'item', 'problema', 'solucao'].map(k => limpaU(o[k])));
     S.div = {}; (await MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte'])).forEach(d => (S.div[d.nreg] = S.div[d.nreg] || []).push(d));
     Object.values(S.div).forEach(xs => xs.sort((a, b) => a.parte - b.parte));
     S.pend = {}; pen.forEach(p => S.pend[p.nreg] = p);
@@ -624,13 +631,20 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   const NIVEIS = ['conjunto', 'item', 'problema', 'solucao'];
   const NOME_NIVEL = {conjunto: 'Conjunto', item: 'Item', problema: 'Problema', solucao: 'Solução'};
   const caminhoDe = (tr, k) => NIVEIS.slice(0, NIVEIS.indexOf(k)).map(n => { const i = tr.querySelector(`input.aj[data-k="${n}"]`); return i ? i.value.replace(/\s+/g, ' ').trim() : ''; });
+  // Opções = as cadastradas no menu (na ordem do menu) + as que já foram usadas nas OS e nos apontamentos.
   function opcoesCatalogo(el) {
-    const k = el.dataset.k, tr = el.closest('tr'), cam = caminhoDe(tr, k);
-    const filhos = cam.every(Boolean) ? (S.cat || []).filter(c => c.nivel === k && c.pai === cam.join('\t')) : [];
-    if (filhos.length) return {itens: filhos.map(c => c.nome), dependente: true, cam};
-    const vistos = new Set(), itens = [];   // sem menu para o que está acima: mostra todos deste nível
-    (S.cat || []).filter(c => c.nivel === k).forEach(c => { const t = norm(c.nome); if (!vistos.has(t)) { vistos.add(t); itens.push(c.nome); } });
-    return {itens, dependente: false, cam};
+    const k = el.dataset.k, n = NIVEIS.indexOf(k), tr = el.closest('tr'), cam = caminhoDe(tr, k);
+    const juntar = (cad, usados) => { const vistos = new Set(), itens = []; cad.concat(usados).forEach(x => { const t = norm(x); if (x && !vistos.has(t)) { vistos.add(t); itens.push(x); } }); return itens; };
+    const iguais = (a, b) => a.length === b.length && a.every((x, i) => norm(x) === norm(b[i]));
+    if (cam.every(Boolean)) {
+      const pai = cam.join('\t');
+      const cad = (S.cat || []).filter(c => c.nivel === k && norm(c.pai) === norm(pai)).map(c => c.nome);
+      const us = (S.usados || []).filter(u => iguais(u.slice(0, n), cam)).map(u => u[n]);
+      const itens = juntar(cad, us);
+      if (itens.length) return {itens, dependente: true, cam};
+    }
+    // sem nada para o que está acima: mostra todos deste nível
+    return {itens: juntar((S.cat || []).filter(c => c.nivel === k).map(c => c.nome), (S.usados || []).map(u => u[n])), dependente: false, cam};
   }
   MGSugere.anexar($('tabela'), 'input.aj[data-k="conjunto"], input.aj[data-k="item"], input.aj[data-k="problema"], input.aj[data-k="solucao"]', {
     fonte: el => ({itens: opcoesCatalogo(el).itens, podeAdicionar: S.dona}),
@@ -671,6 +685,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     tr.classList.remove('salvando');
     if (r.error) { $('msg').textContent = 'Erro ao salvar: ' + r.error.message; return; }
     if (vazio) delete S.aj[nreg]; else S.aj[nreg] = novo;
+    if (k !== 'obs' && S.usados) S.usados.push(AJ_CAMPOS.map(c => { const t = String(vl(l, c) || '').replace(/\s+/g, ' ').trim(); return /^[-.?\s]*$/.test(t) ? '' : t; }));
     aviso(k !== 'obs' && novo[k] == null ? 'Salvo · voltou a valer o que o operador escreveu' : 'Salvo');
     // atualiza só a célula (sem redesenhar a tabela, para não atrapalhar quem está digitando)
     if (k !== 'obs') {
