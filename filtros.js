@@ -365,6 +365,18 @@ window.MGZoom = (function () {
 
 // Escolher numa lista digitando: ao digitar numa célula de lista (select), abre uma caixa de busca que filtra as opções
 // por qualquer parte do texto (sem ligar para acentos/maiúsculas) ou pelo número da opção (1 = primeira da lista).
+// Destaca (sublinhado) as partes do nome que batem com o que foi digitado, sem ligar para acentos/maiúsculas.
+function realce(nome, q, esc) {
+  nome = String(nome); if (!q) return esc(nome);
+  const chars = [...nome].map(c => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase());
+  if (chars.some(c => c.length !== 1)) return esc(nome);
+  nome = [...nome]; const base = chars.join('');
+  const marcas = new Array(nome.length).fill(false);
+  q.split(/\s+/).filter(Boolean).forEach(p => { let i = base.indexOf(p); while (i >= 0) { for (let k = i; k < i + p.length; k++) marcas[k] = true; i = base.indexOf(p, i + 1); } });
+  let h = '', dentro = false;
+  for (let k = 0; k < nome.length; k++) { if (marcas[k] !== dentro) { h += marcas[k] ? '<u>' : '</u>'; dentro = marcas[k]; } h += esc(nome[k]); }
+  return h + (dentro ? '</u>' : '');
+}
 window.MGEscolha = (function () {
   const css = document.createElement('style');
   css.textContent = `.mg-esc{position:absolute;z-index:70;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);padding:6px;width:300px;font:13px var(--sans)}
@@ -373,7 +385,8 @@ window.MGEscolha = (function () {
     .mg-esc li{padding:4px 7px;border-radius:4px;cursor:pointer;display:flex;gap:8px}
     .mg-esc li b{min-width:22px;text-align:right;font:600 12px var(--mono);color:var(--muted)}
     .mg-esc li.on{background:var(--accent);color:var(--accent-ink)}.mg-esc li.on b{color:var(--accent-ink)}
-    .mg-esc .vazio{padding:6px;color:var(--muted)}`;
+    .mg-esc .vazio{padding:6px;color:var(--muted)}
+    .mg-esc li u{text-decoration:none;background:color-mix(in srgb,var(--warn-bg) 85%,transparent);color:inherit;font-weight:700;border-radius:2px}.mg-esc li.on u{background:rgba(255,255,255,.25)}`;
   document.head.appendChild(css);
   const tira = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const marcados = [];   // [{tabela, seletor}]
@@ -402,15 +415,17 @@ window.MGEscolha = (function () {
       else if (/^\d+$/.test(q)) lista = ops.filter(o => o.num === q).concat(ops.filter(o => o.num !== q && o.num.startsWith(q)));
       else {
         const palavras = q.split(/\s+/);
+        const peso = o => { const t = tira(o.nome); return t.startsWith(q) ? 0 : t.split(/[\s(\-/]+/).some(w => w.startsWith(palavras[0])) ? 1 : 2; };
         lista = ops.filter(o => { const t = tira(o.nome); return palavras.every(p => t.includes(p)); })
-          .sort((a, b) => (tira(b.nome).startsWith(q) ? 1 : 0) - (tira(a.nome).startsWith(q) ? 1 : 0));
+          .sort((a, b) => peso(a) - peso(b) || Number(a.num) - Number(b.num));
       }
       ativo = Math.max(0, lista.findIndex(o => o.valor === sel.value && !q));
       desenhar();
     }
     function desenhar() {
       const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-      ul.innerHTML = lista.length ? lista.map((o, i) => `<li data-i="${i}" class="${i === ativo ? 'on' : ''}"><b>${o.num}</b><span>${esc(o.nome)}</span></li>`).join('')
+      const q = tira(inp.value), marca = nome => realce(nome, /^\d+$/.test(q) ? '' : q, esc);
+      ul.innerHTML = lista.length ? lista.map((o, i) => `<li data-i="${i}" class="${i === ativo ? 'on' : ''}"><b>${o.num}</b><span>${marca(o.nome)}</span></li>`).join('')
         : '<li class="vazio">Nenhuma opção com esse texto</li>';
       const on = ul.querySelector('li.on'); if (on) on.scrollIntoView({ block: 'nearest' });
     }
@@ -464,7 +479,8 @@ window.MGSugere = (function () {
   function aberto(el) { return !!pop && (!el || el === alvo); }
   function fechar() { if (pop) pop.remove(); pop = null; alvo = null; lista = []; ativo = -1; extra = null; }
   function desenhar() {
-    const linhas = lista.map((o, i) => `<li data-i="${i}" class="${i === ativo ? 'on' : ''}"><b>${o.num}</b><span>${escH(o.nome)}</span></li>`);
+    const q = alvo ? tira(alvo.value) : '';
+    const linhas = lista.map((o, i) => `<li data-i="${i}" class="${i === ativo ? 'on' : ''}"><b>${o.num}</b><span>${realce(o.nome, /^\d+$/.test(q) ? '' : q, escH)}</span></li>`);
     if (extra) linhas.push(`<li data-i="add" class="${ativo === lista.length ? 'on' : ''}"><b>＋</b><span>Adicionar “${escH(extra)}” ao menu</span></li>`);
     pop.querySelector('ul').innerHTML = linhas.join('') || '<li class="vazio">Sem opções no menu: digite livremente</li>';
     if (pop.querySelector('.dica')) pop.querySelector('.dica').textContent = cfg.titulo ? cfg.titulo(alvo) : '';
@@ -476,7 +492,8 @@ window.MGSugere = (function () {
     const q = todos ? '' : tira(alvo.value);
     if (!q) lista = ops;
     else if (/^\d+$/.test(q)) lista = ops.filter(o => o.num === q).concat(ops.filter(o => o.num !== q && (o.num.startsWith(q) || tira(o.nome).includes(q))));
-    else { const ps = q.split(' '); lista = ops.filter(o => ps.every(p => tira(o.nome).includes(p))).sort((a, b) => (tira(b.nome).startsWith(q) ? 1 : 0) - (tira(a.nome).startsWith(q) ? 1 : 0)); }
+    else { const ps = q.split(' '); const peso = o => { const t = tira(o.nome); return t.startsWith(q) ? 0 : t.split(/[\s(\-/]+/).some(w => w.startsWith(ps[0])) ? 1 : 2; };
+      lista = ops.filter(o => ps.every(p => tira(o.nome).includes(p))).sort((a, b) => peso(a) - peso(b) || Number(a.num) - Number(b.num)); }
     const exato = q && ops.some(o => tira(o.nome) === q);
     extra = (f.podeAdicionar && q && !exato && !/^\d+$/.test(q)) ? alvo.value.replace(/\s+/g, ' ').trim() : null;
     ativo = q ? (lista.length ? 0 : -1) : Math.max(-1, lista.findIndex(o => tira(o.nome) === tira(alvo.value)));
