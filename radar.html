@@ -128,6 +128,10 @@ table.mx{min-width:100%}
 .pill{font:600 11px/1 var(--sans);padding:4px 8px;border-radius:999px;white-space:nowrap}
 .pill.ok{background:var(--good-bg);color:var(--good)}
 .pill.no{background:var(--bad-bg);color:var(--bad)}
+.pill.ds{background:var(--line);color:var(--muted)}
+.dsbtn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px;padding:2px 8px;font:12px var(--sans);cursor:pointer;white-space:nowrap}
+.dsbtn:hover{color:var(--bad);border-color:var(--bad)}.dsbtn.volta:hover{color:var(--good);border-color:var(--good)}
+.dsall{margin-left:auto}
 .list td.num{font-family:var(--mono);font-size:13px}
 .list tr:last-child td{border-bottom:0}
 .bar{height:8px;border-radius:4px;background:var(--accent);min-width:2px}
@@ -225,7 +229,7 @@ tr.outros td{color:var(--warn);font-weight:600}
 <textarea id="clip" aria-hidden="true" tabindex="-1" style="position:fixed;left:-9999px;top:0;width:1px;height:1px"></textarea>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-11-03h"></script>
+<script src="comum.js?v=2026-11-03i"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -236,6 +240,7 @@ function limTxt(){return +S.limiar>0?'de '+(+S.limiar)+' s':'do takt'}
 function save(){try{localStorage.setItem('radar-apont-v4',JSON.stringify(S))}catch(e){}}
 
 let BASE=[],SRC={kind:'sample'},PERIOD=null,TAB='dia',PEND=null,R=null,COPY='',STATUS='all';
+let DESC=new Map(),DONA=false;   // paradas desconsideradas à mão (ex.: produção fora do horário) · nreg -> motivo
 
 const WD=['dom','seg','ter','qua','qui','sex','sáb'];
 const MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -369,7 +374,7 @@ const stLbl=p=>p.f?'Preenchido':p.ta?'Deixado para o turno seguinte':'Não preen
 const isTA=o=>norm(o).startsWith('turno anterior');
 function isInfo(p){const ob=norm((p.x&&p.x.ob)||'');return !norm(p.o).startsWith('outro')||/[a-z0-9]{3}/.test(ob)}
 function compute(){
-  const seen=new Set(),P=[];let dup=0,anul=0,total=0,reset=0,longo=0,curtos=0,fora=0,minD=null,maxD=null,sisN=0,reiN=0,lastD=null,lastH=null;const rec=new Map();
+  const seen=new Set(),P=[],D=[];let dup=0,anul=0,total=0,reset=0,longo=0,curtos=0,fora=0,minD=null,maxD=null,sisN=0,reiN=0,lastD=null,lastH=null;const rec=new Map();
   const mx=parseFloat(String(S.maxH).replace(',','.'));const maxS=mx>0?mx*3600:Infinity;
   const limFixo=+S.limiar>0?+S.limiar:null,hm=(+S.horaMad||0)*3600,tm=String(S.turnoMad).trim();
   for(const r of BASE){
@@ -389,14 +394,16 @@ function compute(){
     if(r.s<=lim){if(r.o!=='')curtos++;continue}
     if(r.s>maxS){longo++;continue}
     const ta=r.o!==''&&isTA(r.o)?1:0;
-    P.push({n:r.n,day,mes:day.slice(0,7),t:r.t,s:r.s,h:r.h,o:r.o,x:r.x,ta,f:r.o!==''&&!ta?1:0});
+    const reg={n:r.n,day,mes:day.slice(0,7),t:r.t,s:r.s,h:r.h,o:r.o,x:r.x,ta,f:r.o!==''&&!ta?1:0};
+    if(r.n!=null&&DESC.has(r.n)){reg.motivo=DESC.get(r.n);D.push(reg);continue}   // desconsiderada à mão: fora de todos os cálculos
+    P.push(reg);
   }
   const turnos=[...new Set(P.map(p=>p.t))].sort((a,b)=>(+a-+b)||a.localeCompare(b));
   const months=[...new Set(P.map(p=>p.mes))].sort();
   const days=[...new Set(P.map(p=>p.day))].sort();
   const allT=[...new Set([...rec.keys()].map(k=>k.split('|')[1]))];for(const t of allT)if(!turnos.includes(t))turnos.push(t);turnos.sort((a,b)=>(+a-+b)||a.localeCompare(b));
   const allDays=[...new Set([...rec.keys()].map(k=>k.split('|')[0]))].sort();
-  return{P,turnos,months,days,dup,anul,total,reset,longo,curtos,fora,minD,maxD,sisN,reiN,rec,lastD,lastH,allDays};
+  return{P,D,turnos,months,days,dup,anul,total,reset,longo,curtos,fora,minD,maxD,sisN,reiN,rec,lastD,lastH,allDays};
 }
 function run(){
   R=compute();
@@ -419,6 +426,7 @@ function render(){
     if(R.reset)m+=' · '+nf(R.reset)+' com horaanterior maior que hora (ignorados)';
     if(R.reiN)m+=' · '+nf(R.reiN)+' reinícios do coletor ignorados';
     if(R.longo)m+=' · '+nf(R.longo)+' paradas acima do máximo (ignoradas)';
+    if(R.D.length)m+=' · '+nf(R.D.length)+' paradas desconsideradas por você';
     status(m)}
   const fb=iso=>iso?dLabel(iso)+'/'+iso.slice(0,4):'';
   $('#ini').min=$('#fim').min=R.minD||'';$('#ini').max=$('#fim').max=R.maxD||'';
@@ -512,19 +520,21 @@ function renderTab(){
     const flt=PEND
       ?p=>(PEND.col==='period'?inPeriod(p):p[PEND.col]===PEND.v)&&(!PEND.t||p.t===PEND.t)
       :inPeriod;
-    const base=R.P.filter(flt);
+    const base=R.P.filter(flt),baseD=R.D.filter(flt);
     const nSim=base.filter(p=>p.f===1).length,nTa=base.filter(p=>p.ta===1).length,nNao=base.length-nSim-nTa;
     const tm=String(S.turnoMad).trim(),hm=(+S.horaMad||0)*3600,ok=p=>S.madrugada&&p.t===tm&&p.h<hm?p.h+86400:p.h;
-    const list=base.filter(p=>STATUS==='all'||(STATUS==='sim'?p.f===1:STATUS==='ta'?p.ta===1:(p.f===0&&p.ta===0))).sort((a,b)=>a.day<b.day?1:a.day>b.day?-1:(a.t===b.t?ok(a)-ok(b):(+a.t-+b.t)||a.t.localeCompare(b.t)));
+    const list=(STATUS==='desc'?baseD:base.filter(p=>STATUS==='all'||(STATUS==='sim'?p.f===1:STATUS==='ta'?p.ta===1:(p.f===0&&p.ta===0)))).sort((a,b)=>a.day<b.day?1:a.day>b.day?-1:(a.t===b.t?ok(a)-ok(b):(+a.t-+b.t)||a.t.localeCompare(b.t)));
     let desc=PEND?[PEND.t?tLabel(PEND.t):'Todos os turnos',PEND.col==='day'?dLabel(PEND.v):PEND.col==='mes'?mLabel(PEND.v):(PERIOD==='all'?'todo o período':mLabel(PERIOD))].join(' · '):(PERIOD==='all'?'Todo o período':mLabel(PERIOD));
     const chip=(v,l,n)=>`<button class="chip" data-status="${v}" aria-pressed="${STATUS===v}">${l} · ${nf(n)}</button>`;
-    hint.innerHTML=`<div class="chips"><span class="filter">${esc(desc)}${PEND?' <button type="button" id="clearPend">Limpar filtro</button>':''}</span>${chip('all','Todas',base.length)}${chip('sim','Preenchidas pelo turno',nSim)}${chip('ta','Deixadas para o seguinte',nTa)}${chip('nao','Não preenchidas',nNao)}</div>`;
+    hint.innerHTML=`<div class="chips"><span class="filter">${esc(desc)}${PEND?' <button type="button" id="clearPend">Limpar filtro</button>':''}</span>${chip('all','Todas',base.length)}${chip('sim','Preenchidas pelo turno',nSim)}${chip('ta','Deixadas para o seguinte',nTa)}${chip('nao','Não preenchidas',nNao)}${baseD.length||STATUS==='desc'?chip('desc','Desconsideradas',baseD.length):''}${DONA&&STATUS!=='desc'&&list.length?`<button class="dsbtn dsall" type="button" id="dsTodas" title="Tira do Radar todas as paradas desta lista (ex.: produção fora do horário)">Desconsiderar as ${nf(list.length)} desta lista</button>`:''}${DONA&&STATUS==='desc'&&list.length?`<button class="dsbtn volta dsall" type="button" id="dsVoltarTodas">Voltar a considerar as ${nf(list.length)}</button>`:''}</div>`;
+    R._lista=list;
     const X=[['o','Oee (motivo)'],['ob','Observações'],['p','Problema'],['so','Solução'],['c','Conjunto'],['it','Item']];
     const val=(p,k)=>k==='o'?p.o:((p.x&&p.x[k])||'');
     const cols=X.filter(([k])=>k==='o'||list.some(p=>val(p,k)!==''));
     const max=500;
-    const rows=list.slice(0,max).map(p=>`<tr><td><span class="pill ${p.f?'ok':p.ta?'ta':'no'}">${stLbl(p)}</span></td><td class="num">${dLabel(p.day)} <span style="color:var(--muted)">${wd(p.day)}</span></td><td>${esc(tLabel(p.t))}</td><td class="num">${fmtHora((p.h-p.s+86400)%86400)}</td><td class="num">${fmtHora(p.h)}</td><td class="num">${fmtDur(p.s)}</td>${cols.map(([k])=>{const v=val(p,k);return `<td class="txt">${v?esc(v):'<span style="color:var(--muted)">—</span>'}</td>`}).join('')}<td class="num" style="color:var(--muted)">${esc(p.n||'—')}</td></tr>`).join('');
-    body.innerHTML=list.length?`<div class="scroll"><table class="list"><thead><tr><th>Situação</th><th>Dia</th><th>Turno</th><th>Início (horaanterior)</th><th>Fim (hora)</th><th>Duração</th>${cols.map(([,l])=>`<th>${l}</th>`).join('')}<th>nreg</th></tr></thead><tbody>${rows}</tbody></table></div>${list.length>max?`<p class="hint">Mostrando as ${max} mais recentes. O botão Copiar leva todas as ${nf(list.length)}.</p>`:''}`:`<p class="hint">${STATUS==='nao'?'Todas as paradas deste filtro têm apontamento.':STATUS==='sim'?'Nenhuma parada deste filtro foi apontada.':'Nenhuma parada neste filtro.'}</p>`;
+    const acao=p=>!DONA||!p.n?'':STATUS==='desc'?`<button class="dsbtn volta" type="button" data-volta="${esc(p.n)}" title="Voltar a contar esta parada no Radar">Voltar a considerar</button>`:`<button class="dsbtn" type="button" data-desc="${esc(p.n)}" title="Tirar esta parada do Radar (não conta no %)">Desconsiderar</button>`;
+    const rows=list.slice(0,max).map(p=>`<tr><td><span class="pill ${STATUS==='desc'?'ds':p.f?'ok':p.ta?'ta':'no'}">${STATUS==='desc'?'Desconsiderada':stLbl(p)}</span>${STATUS==='desc'&&p.motivo?`<div style="font-size:11.5px;color:var(--muted);max-width:180px;white-space:normal">${esc(p.motivo)}</div>`:''}</td><td class="num">${dLabel(p.day)} <span style="color:var(--muted)">${wd(p.day)}</span></td><td>${esc(tLabel(p.t))}</td><td class="num">${fmtHora((p.h-p.s+86400)%86400)}</td><td class="num">${fmtHora(p.h)}</td><td class="num">${fmtDur(p.s)}</td>${cols.map(([k])=>{const v=val(p,k);return `<td class="txt">${v?esc(v):'<span style="color:var(--muted)">—</span>'}</td>`}).join('')}<td class="num" style="color:var(--muted)">${esc(p.n||'—')}</td>${DONA?`<td>${acao(p)}</td>`:''}</tr>`).join('');
+    body.innerHTML=list.length?`<div class="scroll"><table class="list"><thead><tr><th>Situação</th><th>Dia</th><th>Turno</th><th>Início (horaanterior)</th><th>Fim (hora)</th><th>Duração</th>${cols.map(([,l])=>`<th>${l}</th>`).join('')}<th>nreg</th>${DONA?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table></div>${list.length>max?`<p class="hint">Mostrando as ${max} mais recentes. O botão Copiar leva todas as ${nf(list.length)}.</p>`:''}`:`<p class="hint">${STATUS==='nao'?'Todas as paradas deste filtro têm apontamento.':STATUS==='sim'?'Nenhuma parada deste filtro foi apontada.':'Nenhuma parada neste filtro.'}</p>`;
     COPY=[['Situação','Dia','Turno','horaanterior','hora','Segundos',...cols.map(([,l])=>l),'nreg'],...list.map(p=>[stLbl(p),dLabel(p.day)+'/'+p.day.slice(0,4),tLabel(p.t),fmtHora((p.h-p.s+86400)%86400),fmtHora(p.h),p.s,...cols.map(([k])=>String(val(p,k)).replace(/[\t\r\n]+/g,' ')),p.n||''])].map(r=>r.join('\t')).join('\n');
   }else{
     const list=R.P.filter(p=>p.f===1&&inPeriod(p));
@@ -545,6 +555,7 @@ document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{TAB
 $('#period').addEventListener('click',e=>{const b=e.target.closest('[data-period]');if(!b)return;PERIOD=b.dataset.period;PEND=null;renderPeriod();renderKpis();renderRank();renderTab()});
 document.addEventListener('click',e=>{
   if(e.target.id==='clearPend'){PEND=null;renderTab();return}
+  const dsb=e.target.closest('[data-desc],[data-volta],#dsTodas,#dsVoltarTodas');if(dsb){acaoDesc(dsb);return}
   const st=e.target.closest('[data-status]');if(st){STATUS=st.dataset.status;renderTab();return}
   const b=e.target.closest('.cellbtn');if(!b)return;
   PEND={col:b.dataset.col,v:b.dataset.v,t:b.dataset.t||null};
@@ -572,6 +583,32 @@ $('#btnLimpar').addEventListener('click',()=>{S.ini='';S.fim='';$('#ini').value=
 $('#btnSample').addEventListener('click',()=>{BASE=sample();SRC={kind:'sample'};PERIOD=null;PEND=null;run()});
 
 
+/* ---------- desconsiderar paradas à mão ---------- */
+async function acaoDesc(b){
+  if(!DONA)return;
+  const volta=b.hasAttribute('data-volta')||b.id==='dsVoltarTodas';
+  const ns=b.id==='dsTodas'||b.id==='dsVoltarTodas'?(R._lista||[]).map(p=>p.n).filter(Boolean):[b.dataset.desc||b.dataset.volta];
+  if(!ns.length)return;
+  const sb=MG.sb;b.disabled=true;
+  try{
+    if(volta){
+      if(ns.length>1&&!confirm('Voltar a considerar '+nf(ns.length)+' paradas no Radar?')){b.disabled=false;return}
+      for(let i=0;i<ns.length;i+=200){const{error}=await sb.from('radar_desconsiderados').delete().in('nreg',ns.slice(i,i+200).map(Number));if(error)throw error}
+      ns.forEach(n=>DESC.delete(n));
+      $('#toast').textContent=nf(ns.length)+(ns.length>1?' paradas voltaram':' parada voltou')+' a contar no Radar.';
+    }else{
+      const motivo=prompt((ns.length>1?'Desconsiderar '+nf(ns.length)+' paradas no Radar.':'Desconsiderar esta parada no Radar.')+'\nMotivo (opcional):','Produção fora do horário');
+      if(motivo===null){b.disabled=false;return}
+      const sess=await MG.sessao(),quem=sess&&sess.user?sess.user.email:null,quando=new Date().toISOString();
+      const regs=ns.map(n=>({nreg:Number(n),motivo:motivo.trim()||null,atualizado_em:quando,atualizado_por:quem}));
+      for(let i=0;i<regs.length;i+=500){const{error}=await sb.from('radar_desconsiderados').upsert(regs.slice(i,i+500),{onConflict:'nreg'});if(error)throw error}
+      ns.forEach(n=>DESC.set(n,motivo.trim()||''));
+      $('#toast').textContent=nf(ns.length)+(ns.length>1?' paradas desconsideradas':' parada desconsiderada')+'. Veja em "Desconsideradas" para desfazer.';
+    }
+    const t=$('#toast').textContent;run();$('#toast').textContent=t;
+  }catch(e){status('Erro ao salvar: '+(e.message||e),true);b.disabled=false}
+}
+
 /* ---------- leitura do sistema (Supabase) ---------- */
 async function carregarDoSistema(){
   status('Carregando os dados do sistema…');
@@ -579,6 +616,8 @@ async function carregarDoSistema(){
   try{
     const sess=await MG.sessao();
     if(!sess){status('Faça login na página inicial do sistema para ver o Radar.',true);return}
+    DONA=MG.ehDona(sess);
+    try{DESC=new Map((await MG.buscarTudo('radar_desconsiderados','nreg,motivo')).map(d=>[String(d.nreg),d.motivo||'']))}catch(e){DESC=new Map()}
     const rows=await MG.buscarTudo('coletor','nreg,dia,hora,hora_anterior,idturno,menuid,anulado,oee_operador,conjunto,problema,solucao,observacao,item',null,'nreg',(a,t)=>status('Carregando '+nf(a)+' de '+nf(t)+' registros…'));
     const M={c:'conjunto',p:'problema',so:'solucao',ob:'observacao',it:'item'};
     const out=[];let skip=0,prevH=null;
