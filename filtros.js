@@ -453,3 +453,72 @@ window.MGEscolha = (function () {
   }
   return { anexar, usa, abrir };
 })();
+
+// Sugestões num campo de texto (sem impedir que se digite outra coisa): ao digitar, ou ao clicar, aparece uma lista
+// filtrada por qualquer parte do texto ou pelo número. ↑ ↓ escolhem, Enter usa a sugestão marcada, Esc fecha a lista
+// (aí Enter/Tab ficam com o que foi digitado). A última linha permite adicionar o texto digitado ao menu.
+window.MGSugere = (function () {
+  const tira = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const escH = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let pop = null, alvo = null, lista = [], ativo = -1, cfg = null, extra = null;
+  function aberto(el) { return !!pop && (!el || el === alvo); }
+  function fechar() { if (pop) pop.remove(); pop = null; alvo = null; lista = []; ativo = -1; extra = null; }
+  function desenhar() {
+    const linhas = lista.map((o, i) => `<li data-i="${i}" class="${i === ativo ? 'on' : ''}"><b>${o.num}</b><span>${escH(o.nome)}</span></li>`);
+    if (extra) linhas.push(`<li data-i="add" class="${ativo === lista.length ? 'on' : ''}"><b>＋</b><span>Adicionar “${escH(extra)}” ao menu</span></li>`);
+    pop.querySelector('ul').innerHTML = linhas.join('') || '<li class="vazio">Sem opções no menu: digite livremente</li>';
+    if (pop.querySelector('.dica')) pop.querySelector('.dica').textContent = cfg.titulo ? cfg.titulo(alvo) : '';
+    const on = pop.querySelector('li.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+  }
+  function filtrar(todos) {
+    const f = cfg.fonte(alvo) || { itens: [] };
+    const ops = (f.itens || []).map((nome, i) => ({ nome, num: String(i + 1) }));
+    const q = todos ? '' : tira(alvo.value);
+    if (!q) lista = ops;
+    else if (/^\d+$/.test(q)) lista = ops.filter(o => o.num === q).concat(ops.filter(o => o.num !== q && (o.num.startsWith(q) || tira(o.nome).includes(q))));
+    else { const ps = q.split(' '); lista = ops.filter(o => ps.every(p => tira(o.nome).includes(p))).sort((a, b) => (tira(b.nome).startsWith(q) ? 1 : 0) - (tira(a.nome).startsWith(q) ? 1 : 0)); }
+    const exato = q && ops.some(o => tira(o.nome) === q);
+    extra = (f.podeAdicionar && q && !exato && !/^\d+$/.test(q)) ? alvo.value.replace(/\s+/g, ' ').trim() : null;
+    ativo = q ? (lista.length ? 0 : -1) : Math.max(-1, lista.findIndex(o => tira(o.nome) === tira(alvo.value)));
+    if (!lista.length && !extra) { if (pop) { pop.remove(); pop = null; } return; }
+    if (!pop) {
+      pop = document.createElement('div'); pop.className = 'mg-esc mg-sug';
+      pop.innerHTML = '<div class="dica muted" style="font-size:11.5px;padding:0 4px 4px"></div><ul style="margin:0"></ul><div class="muted" style="font-size:11px;padding:4px 4px 0">Enter usa a marcada · Esc fecha e mantém o que você digitou</div>';
+      document.body.appendChild(pop);
+      pop.addEventListener('mousedown', e => { e.preventDefault(); const li = e.target.closest('li[data-i]'); if (li) usar(li.dataset.i === 'add' ? 'add' : +li.dataset.i); });
+    }
+    const r = alvo.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - 310, r.left + window.scrollX)) + 'px';
+    pop.style.top = (r.bottom + window.scrollY + 2) + 'px';
+    desenhar();
+  }
+  async function usar(i) {
+    const el = alvo, c = cfg;
+    if (i === 'add') {
+      const nome = extra; fechar();
+      if (c.adicionar) { try { await c.adicionar(el, nome); } catch (e) { console.warn(e); } }
+      el.value = nome;
+    } else { const o = lista[i]; fechar(); if (!o) return; el.value = o.nome; }
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.focus({ preventScroll: true });
+  }
+  function anexar(container, seletor, opcoes) {
+    if (!container) return;
+    const abrir = (el, todos) => { alvo = el; cfg = opcoes; filtrar(todos); };
+    container.addEventListener('input', e => { const el = e.target; if (el.matches && el.matches(seletor)) abrir(el, false); });
+    container.addEventListener('mousedown', e => { const el = e.target; if (el.matches && el.matches(seletor) && !el.disabled) setTimeout(() => abrir(el, true), 0); });
+    container.addEventListener('keydown', e => {
+      const el = e.target; if (!el.matches || !el.matches(seletor)) return;
+      if (e.key === 'ArrowDown' && e.altKey) { e.preventDefault(); e.stopPropagation(); abrir(el, true); return; }
+      if (!aberto(el)) return;
+      const n = lista.length + (extra ? 1 : 0);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); if (n) { ativo = e.key === 'ArrowDown' ? (ativo + 1) % n : (ativo - 1 + n) % n; desenhar(); } }
+      else if (e.key === 'Enter' && ativo >= 0) { e.preventDefault(); e.stopPropagation(); usar(ativo === lista.length ? 'add' : ativo); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); }
+      else if (e.key === 'Tab' || e.key === 'Enter') fechar();
+    }, true);
+    container.addEventListener('focusout', e => { if (e.target === alvo) setTimeout(() => { if (alvo === e.target && document.activeElement !== e.target) fechar(); }, 0); });
+  }
+  window.addEventListener('resize', fechar);
+  return { anexar, aberto, fechar };
+})();

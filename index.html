@@ -263,10 +263,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-03c"></script>
-<script src="planilha.js?v=2026-11-03c"></script>
-<script src="filtros.js?v=2026-11-03c"></script>
-<script src="abas.js?v=2026-11-03c"></script>
+<script src="comum.js?v=2026-11-03d"></script>
+<script src="planilha.js?v=2026-11-03d"></script>
+<script src="filtros.js?v=2026-11-03d"></script>
+<script src="abas.js?v=2026-11-03d"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -334,6 +334,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     for (const r of [sub, prog, leg]) if (r.error) throw new Error(r.error.message);
     S.classif = {}; cls.forEach(c => S.classif[c.nreg] = c);
     S.aj = {}; (await MG.buscarTudo('ajustes', '*')).forEach(a => S.aj[a.nreg] = a);
+    S.cat = (await MG.buscarTudo('catalogo', '*').catch(() => [])).filter(c => c.ativo !== false)
+      .sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || String(a.nome).localeCompare(String(b.nome), 'pt'));
     S.div = {}; (await MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte'])).forEach(d => (S.div[d.nreg] = S.div[d.nreg] || []).push(d));
     Object.values(S.div).forEach(xs => xs.sort((a, b) => a.parte - b.parte));
     S.pend = {}; pen.forEach(p => S.pend[p.nreg] = p);
@@ -618,6 +620,30 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   FA.ligar($('tabela'), () => filtradas());
   MGZoom.anexar('tabela'); MGZoom.anexar('pTabela');
   MGEscolha.anexar($('tabela'), 'select.prog, select.sub');
+  // Menus de Conjunto › Item › Problema › Solução (dependentes, como os da classificação); continua aceitando texto livre.
+  const NIVEIS = ['conjunto', 'item', 'problema', 'solucao'];
+  const NOME_NIVEL = {conjunto: 'Conjunto', item: 'Item', problema: 'Problema', solucao: 'Solução'};
+  const caminhoDe = (tr, k) => NIVEIS.slice(0, NIVEIS.indexOf(k)).map(n => { const i = tr.querySelector(`input.aj[data-k="${n}"]`); return i ? i.value.replace(/\s+/g, ' ').trim() : ''; });
+  function opcoesCatalogo(el) {
+    const k = el.dataset.k, tr = el.closest('tr'), cam = caminhoDe(tr, k);
+    const filhos = cam.every(Boolean) ? (S.cat || []).filter(c => c.nivel === k && c.pai === cam.join('\t')) : [];
+    if (filhos.length) return {itens: filhos.map(c => c.nome), dependente: true, cam};
+    const vistos = new Set(), itens = [];   // sem menu para o que está acima: mostra todos deste nível
+    (S.cat || []).filter(c => c.nivel === k).forEach(c => { const t = norm(c.nome); if (!vistos.has(t)) { vistos.add(t); itens.push(c.nome); } });
+    return {itens, dependente: false, cam};
+  }
+  MGSugere.anexar($('tabela'), 'input.aj[data-k="conjunto"], input.aj[data-k="item"], input.aj[data-k="problema"], input.aj[data-k="solucao"]', {
+    fonte: el => ({itens: opcoesCatalogo(el).itens, podeAdicionar: S.dona}),
+    titulo: el => { const o = opcoesCatalogo(el), k = el.dataset.k; return k === 'conjunto' ? 'Conjuntos do menu' : o.dependente ? `${NOME_NIVEL[k]} de: ${o.cam.join(' › ')}` : `${NOME_NIVEL[k]} (todos; ainda sem menu para ${o.cam.filter(Boolean).join(' › ') || 'o campo anterior vazio'})`; },
+    adicionar: async (el, nome) => {
+      const k = el.dataset.k, cam = caminhoDe(el.closest('tr'), k);
+      const pai = cam.every(Boolean) ? cam.join('\t') : '';
+      const {data, error} = await sb.from('catalogo').upsert({nivel: k, pai, nome}, {onConflict: 'nivel,pai,nome', ignoreDuplicates: true}).select();
+      if (error) { $('msg').textContent = 'Erro ao adicionar ao menu: ' + error.message; return; }
+      if (data && data[0]) S.cat.push(data[0]); else S.cat.push({nivel: k, pai, nome, ativo: true});
+      aviso(`“${nome}” adicionado ao menu de ${NOME_NIVEL[k]}`);
+    }
+  });
   $('tabela').addEventListener('change', e => {
     const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
     if (e.target.classList.contains('prog') || e.target.classList.contains('sub')) salvarLinha(tr);

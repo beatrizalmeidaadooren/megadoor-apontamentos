@@ -41,7 +41,7 @@ window.MGPlanilha = (function () {
   // ---- leitura do sistema ----
   async function lerTudo(aoProgresso) {
     const p = aoProgresso || (() => {});
-    const [coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes] = await Promise.all([
+    const [coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes, catalogo] = await Promise.all([
       MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,qnt,qntdefeito,anulado,oee_operador,conjunto,problema,solucao,observacao,item', null, 'nreg',
         (a, t) => p(`Lendo apontamentos da Megadoor: ${a.toLocaleString('pt-BR')} de ${t.toLocaleString('pt-BR')}`)),
       MG.buscarTudo('classificacao', '*'),
@@ -52,11 +52,12 @@ window.MGPlanilha = (function () {
       MG.sb.from('programadas').select('*').then(r => { if (r.error) throw r.error; return r.data; }),
       MG.carregarTakt(),
       MG.buscarTudo('ajustes', '*').catch(() => []),
-      MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte']).catch(() => [])
-    ]).then(r => [...r.slice(0, 7), r[8], r[9]]);
+      MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte']).catch(() => []),
+      MG.buscarTudo('catalogo', '*').catch(() => [])
+    ]).then(r => [...r.slice(0, 7), r[8], r[9], r[10]]);
     const porOrdem = (a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9);
     subgrupos.sort(porOrdem); programadas.sort(porOrdem);
-    return { coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes };
+    return { coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes, catalogo };
   }
 
   // ---- abas ----
@@ -212,6 +213,7 @@ window.MGPlanilha = (function () {
       add('sis_classificacao', d.classif);
       add('sis_ajustes', d.ajustes || []);
       add('sis_divisoes', d.divisoes || []);
+      if (d.catalogo) add('sis_catalogo', d.catalogo.map(c => ({ ...c, pai: String(c.pai || '').split('\t').join(' › ') })));
       add('sis_pendencias', d.pendencias || []);
       add('sis_limpeza', d.limpeza.map(r => ({ ...r, itens: (r.itens || []).map(x => x || '_').join(' ') })));
       add('sis_os', d.os);

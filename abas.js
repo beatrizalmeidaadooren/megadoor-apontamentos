@@ -810,6 +810,122 @@ window.MGAbas = (function () {
       await mnFeito('Subgrupo adicionado');
     });
     menusCarregar();
+    catIniciar();
+  }
+
+  /* ---- Menus de Conjunto › Item › Problema › Solução ---- */
+  const NIV = [['conjunto', 'Conjunto'], ['item', 'Item'], ['problema', 'Problema'], ['solucao', 'Solução']];
+  const CT = { linhas: [], sel: ['', '', ''] };   // sel = conjunto, item e problema escolhidos nas colunas
+  function catHTML() {
+    return `<div class="card"><h2 style="font-size:16px">Conjunto › Item › Problema › Solução</h2>
+      <p class="muted" style="margin:4px 0 8px;max-width:100ch">Monte os menus dependentes: escolha um conjunto para ver e cadastrar os itens dele; escolha um item para os problemas, e um problema para as soluções.
+      Na aba Apontamentos, esses campos sugerem as opções do menu, mas continuam aceitando qualquer texto. Ali também dá para adicionar ao menu o que você digitou.</p>
+      <div class="barra" style="margin:0 0 8px"><button class="btn small" type="button" id="ctImportar" title="Cadastra no menu as combinações que já aparecem nas OS e nos apontamentos (só as que ainda não existem)">Importar das OS e dos apontamentos</button><span class="muted" id="ctMsg"></span></div>
+      <div id="ctCols" style="display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:10px;overflow:auto"></div></div>`;
+  }
+  const paiDe = n => CT.sel.slice(0, n).join('\t');
+  function catRender() {
+    const ed = CTX.dona ? '' : 'disabled';
+    $('ctCols').innerHTML = NIV.map(([k, rot], n) => {
+      const pronto = CT.sel.slice(0, n).every(Boolean);
+      const xs = pronto ? CT.linhas.filter(c => c.nivel === k && c.pai === paiDe(n)).sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || a.nome.localeCompare(b.nome, 'pt')) : [];
+      const corpo = !pronto ? `<p class="muted" style="font-size:12px">Escolha ${n === 1 ? 'um conjunto' : n === 2 ? 'um item' : 'um problema'} na coluna ao lado.</p>`
+        : (xs.length ? xs.map((c, i) => `<div class="ct-l${n < 3 && CT.sel[n] === c.nome ? ' on' : ''}" data-id="${c.id}" style="display:flex;gap:3px;align-items:center;padding:2px;border-radius:4px;${n < 3 && CT.sel[n] === c.nome ? 'background:var(--info-bg)' : ''}${c.ativo === false ? ';opacity:.5' : ''}">
+            <b class="muted" style="font:600 11px var(--mono);min-width:18px;text-align:right">${i + 1}</b>
+            <input class="ct-nome" value="${esc(c.nome)}" ${ed} style="flex:1;min-width:0">
+            ${n < 3 ? `<button class="btn small ct-abrir" type="button" title="Ver os de baixo">›</button>` : ''}
+            <button class="btn small ct-mov" data-m="-1" type="button" ${ed || !i ? 'disabled' : ''}>↑</button><button class="btn small ct-mov" data-m="1" type="button" ${ed || i === xs.length - 1 ? 'disabled' : ''}>↓</button>
+            <input type="checkbox" class="ct-ativo" title="Ativo" ${c.ativo !== false ? 'checked' : ''} ${ed}></div>`).join('') : '<p class="muted" style="font-size:12px">Nada cadastrado ainda.</p>')
+          + (CTX.dona ? `<div style="display:flex;gap:4px;margin-top:6px"><input class="ct-novo" data-n="${n}" placeholder="novo ${rot.toLowerCase()}" style="flex:1;min-width:0"><button class="btn small primary ct-add" data-n="${n}" type="button">+</button></div>` : '');
+      return `<div><div style="font-weight:700;margin-bottom:4px">${rot}${n ? ` <span class="muted" style="font-weight:400;font-size:12px">${pronto ? 'de ' + esc(CT.sel[n - 1]) : ''}</span>` : ''}</div>${corpo}</div>`;
+    }).join('');
+  }
+  async function catCarregar() {
+    const { data, error } = await sb.from('catalogo').select('*').limit(5000);
+    if (error) { CTX.erro('Erro ao carregar os menus de conjunto/item: ' + error.message); return; }
+    CT.linhas = data; catRender();
+  }
+  async function catFeito(msg) { CTX.aviso(msg || 'Salvo'); await catCarregar(); if (CTX.aposMenus) CTX.aposMenus(); }
+  async function catAdicionar(n, nome) {
+    nome = String(nome || '').replace(/\s+/g, ' ').trim(); if (!nome) return;
+    const k = NIV[n][0], pai = paiDe(n);
+    if (CT.linhas.some(c => c.nivel === k && c.pai === pai && norm(c.nome) === norm(nome))) { CTX.erro(`“${nome}” já está neste menu.`); return; }
+    const ordem = CT.linhas.filter(c => c.nivel === k && c.pai === pai).reduce((a, c) => Math.max(a, c.ordem || 0), 0) + 1;
+    const { error } = await sb.from('catalogo').insert({ nivel: k, pai, nome, ordem });
+    if (error) { CTX.erro('Erro ao adicionar: ' + error.message); return; }
+    await catFeito('Adicionado');
+  }
+  function catIniciar() {
+    const caixa = document.createElement('div'); caixa.innerHTML = catHTML();
+    $('sec-menus').appendChild(caixa);
+    const linha = el => { const d = el.closest('.ct-l'); return d ? CT.linhas.find(c => String(c.id) === d.dataset.id) : null; };
+    const nivelN = c => NIV.findIndex(x => x[0] === c.nivel);
+    $('ctCols').addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.classList.contains('ct-add')) { const n = +b.dataset.n; const inp = $('ctCols').querySelector(`.ct-novo[data-n="${n}"]`); return catAdicionar(n, inp.value); }
+      const c = linha(b); if (!c) return;
+      const n = nivelN(c);
+      if (b.classList.contains('ct-abrir')) { CT.sel[n] = c.nome; for (let j = n + 1; j < 3; j++) CT.sel[j] = ''; catRender(); return; }
+      if (b.classList.contains('ct-mov') && CTX.dona) {
+        const xs = CT.linhas.filter(x => x.nivel === c.nivel && x.pai === c.pai).sort((a, b2) => (a.ordem ?? 1e9) - (b2.ordem ?? 1e9) || a.nome.localeCompare(b2.nome, 'pt'));
+        const i = xs.indexOf(c), j = i + Number(b.dataset.m); if (j < 0 || j >= xs.length) return;
+        [xs[i], xs[j]] = [xs[j], xs[i]];
+        for (const [p, x] of xs.entries()) if (x.ordem !== p + 1) { const r = await sb.from('catalogo').update({ ordem: p + 1 }).eq('id', x.id); if (r.error) { CTX.erro('Erro: ' + r.error.message); return; } }
+        return catFeito('Ordem salva');
+      }
+    });
+    $('ctCols').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('ct-novo')) { e.preventDefault(); catAdicionar(+e.target.dataset.n, e.target.value); } });
+    $('ctCols').addEventListener('change', async e => {
+      if (!CTX.dona) return;
+      const t = e.target, c = linha(t); if (!c) return;
+      if (t.classList.contains('ct-ativo')) { const r = await sb.from('catalogo').update({ ativo: t.checked }).eq('id', c.id); if (r.error) { CTX.erro('Erro: ' + r.error.message); return; } return catFeito(); }
+      if (t.classList.contains('ct-nome')) {
+        const novo = t.value.replace(/\s+/g, ' ').trim(), n = nivelN(c);
+        if (!novo || novo === c.nome) { t.value = c.nome; return; }
+        if (CT.linhas.some(x => x !== c && x.nivel === c.nivel && x.pai === c.pai && norm(x.nome) === norm(novo))) { CTX.erro(`“${novo}” já está neste menu.`); t.value = c.nome; return; }
+        let r = await sb.from('catalogo').update({ nome: novo }).eq('id', c.id);
+        if (r.error) { CTX.erro('Erro ao renomear: ' + r.error.message); t.value = c.nome; return; }
+        // os itens abaixo guardam o caminho (conjunto › item › problema): acompanha o novo nome
+        const velho = (c.pai ? c.pai + '\t' : '') + c.nome, nov = (c.pai ? c.pai + '\t' : '') + novo;
+        for (const x of CT.linhas.filter(x => x.pai === velho || x.pai.startsWith(velho + '\t'))) {
+          r = await sb.from('catalogo').update({ pai: nov + x.pai.slice(velho.length) }).eq('id', x.id);
+          if (r.error) { CTX.erro('Erro ao atualizar os de baixo: ' + r.error.message); break; }
+        }
+        if (CT.sel[n] === c.nome) CT.sel[n] = novo;
+        return catFeito('Renomeado');
+      }
+    });
+    $('ctImportar').addEventListener('click', async () => {
+      if (!CTX.dona) return;
+      const b = $('ctImportar'); b.disabled = true; $('ctMsg').textContent = 'Lendo…';
+      try {
+        const [os, col, aj] = await Promise.all([
+          MG.buscarTudo('os', 'conjunto,item,problema,solucao'),
+          MG.buscarTudo('coletor', 'nreg,conjunto,item,problema,solucao', q => q.not('conjunto', 'is', null)),
+          MG.buscarTudo('ajustes', '*')]);
+        const ajN = {}; aj.forEach(a => ajN[a.nreg] = a);
+        const caminhos = os.concat(col.map(l => { const a = ajN[l.nreg] || {}; const o = {}; ['conjunto', 'item', 'problema', 'solucao'].forEach(k => o[k] = a[k] != null ? a[k] : l[k]); return o; }))
+          .concat(aj.filter(a => a.conjunto && !col.some(l => l.nreg === a.nreg)));
+        const limpa = v => { const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return /^[-.?\s]*$/.test(t) ? '' : t; };
+        const novos = new Map();
+        const tem = (k, pai, nome) => CT.linhas.some(c => c.nivel === k && c.pai === pai && norm(c.nome) === norm(nome));
+        for (const o of caminhos) {
+          const v = NIV.map(([k]) => limpa(o[k]));
+          for (let n = 0; n < 4 && v[n]; n++) {
+            const pai = v.slice(0, n).join('\t'), chave = n + '|' + pai + '|' + norm(v[n]);
+            if (!tem(NIV[n][0], pai, v[n]) && !novos.has(chave)) novos.set(chave, { nivel: NIV[n][0], pai, nome: v[n] });
+          }
+        }
+        if (!novos.size) { $('ctMsg').textContent = 'Nada novo para importar.'; return; }
+        if (!confirm(`Cadastrar ${novos.size} opções novas nos menus (a partir das OS e dos apontamentos)? Depois você pode renomear ou desativar o que não quiser.`)) { $('ctMsg').textContent = ''; return; }
+        const { error } = await sb.from('catalogo').upsert([...novos.values()], { onConflict: 'nivel,pai,nome', ignoreDuplicates: true });
+        if (error) { CTX.erro('Erro ao importar: ' + error.message); $('ctMsg').textContent = ''; return; }
+        $('ctMsg').textContent = `${novos.size} opções importadas.`;
+        await catFeito('Importado');
+      } catch (e) { CTX.erro('Erro ao importar: ' + e.message); $('ctMsg').textContent = ''; }
+      finally { b.disabled = false; }
+    });
+    catCarregar();
   }
 
   /* =================== TAKT TIME POR PERÍODO =================== */
@@ -888,7 +1004,7 @@ window.MGAbas = (function () {
   function abrir(qual, ctx) {
     CTX = ctx;
     if (iniciadas[qual]) {
-      if (qual === 'montagem') montagemCarregar(); else if (qual === 'limpeza') limpezaCarregar(); else if (qual === 'os') osCarregar(); else if (qual === 'takt') taktCarregar(); else if (qual === 'menus') menusCarregar();
+      if (qual === 'montagem') montagemCarregar(); else if (qual === 'limpeza') limpezaCarregar(); else if (qual === 'os') osCarregar(); else if (qual === 'takt') taktCarregar(); else if (qual === 'menus') { menusCarregar(); catCarregar(); }
       return;
     }
     iniciadas[qual] = true;
