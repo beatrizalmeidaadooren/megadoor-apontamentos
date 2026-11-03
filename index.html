@@ -263,10 +263,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-03f"></script>
-<script src="planilha.js?v=2026-11-03f"></script>
-<script src="filtros.js?v=2026-11-03f"></script>
-<script src="abas.js?v=2026-11-03f"></script>
+<script src="comum.js?v=2026-11-03g"></script>
+<script src="planilha.js?v=2026-11-03g"></script>
+<script src="filtros.js?v=2026-11-03g"></script>
+<script src="abas.js?v=2026-11-03g"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -726,9 +726,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         const a = t; t += p.seg; const ult = i === P.length - 1;
         const dis = ed ? '' : 'disabled';
         return `<tr data-i="${i}"><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${CORES[i % CORES.length]}"></span> ${i + 1}</td>
-          <td class="num">${hmsDe(a)}</td>
-          <td>${ult ? `<span class="num">${hmsDe(t)}</span>` : `<input type="time" step="1" class="dp-fim" value="${hmsDe(t)}" ${dis}>`}</td>
-          <td>${ult ? `<span class="num">${nf(p.seg)}</span>` : `<input type="number" min="1" class="dp-seg" value="${p.seg}" ${dis}>`}</td>
+          <td class="num dp-ini">${hmsDe(a)}</td>
+          <td>${ult ? `<span class="num dp-fimtx">${hmsDe(t)}</span>` : `<input type="time" step="1" class="dp-fim" value="${hmsDe(t)}" ${dis}>`}</td>
+          <td>${ult ? `<span class="num dp-segtx">${nf(p.seg)}</span>` : `<input type="number" min="1" class="dp-seg" value="${p.seg}" ${dis}>`}</td>
           <td><select class="dp-prog" ${dis}>${progOpts(p.programada)}</select></td>
           <td>${naoProgramada(p.programada) ? `<select class="dp-sub" ${dis}>${subOpts(p.sub)}</select>` : '<span class="muted">—</span>'}</td>
           <td><input class="dp-obs" value="${esc(p.obs)}" placeholder="observação" ${dis}></td>
@@ -738,10 +738,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         <h3>Dividir apontamento ${l.nreg}</h3>
         <div class="muted">${dBR(l.dia)} · turno ${esc(TURNO[l.idturno] || l.idturno || '')} · de <b>${esc(l.hora_anterior)}</b> a <b>${esc(l.hora)}</b> · ${nf(tc)} s
           · operador: ${esc(operTexto(l.oee_operador) || '—')}</div>
-        <div class="dv-barra">${P.map((p, i) => `<span style="width:${p.seg / tc * 100}%;background:${CORES[i % CORES.length]}" title="Parte ${i + 1}: ${nf(p.seg)} s"></span>`).join('')}</div>
+        <div class="dv-barra">${P.map((p, i) => `<span data-i="${i}" style="width:${p.seg / tc * 100}%;background:${CORES[i % CORES.length]}" title="Parte ${i + 1}: ${nf(p.seg)} s"></span>`).join('')}</div>
         <table><thead><tr><th>Parte</th><th>Início</th><th>Fim</th><th>Duração (s)</th><th>Programada</th><th>Subgrupo do OEE</th><th>Observação</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
         <div class="dv-erro" id="dvErro">${esc(msgErro)}</div>
-        <p class="muted" style="margin:4px 0 10px;font-size:12px">Mude o <b>Fim</b> (ou a duração) de uma parte e a parte seguinte se ajusta. Nas análises, o tempo perdido, o fora do takt e os kits perdidos do apontamento são repartidos na proporção da duração de cada parte. Na lista, o apontamento fica com a classificação da parte mais longa.</p>
+        <p class="muted" style="margin:4px 0 10px;font-size:12px">Digite o <b>Fim</b> (ou a duração) de uma parte e tecle <b>Enter</b> ou <b>Tab</b>: a parte seguinte se ajusta. Nas análises, o tempo perdido, o fora do takt e os kits perdidos do apontamento são repartidos na proporção da duração de cada parte. Na lista, o apontamento fica com a classificação da parte mais longa.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${ed ? `<button class="btn small" type="button" id="dvMais">+ Dividir mais</button>
           <span style="flex:1"></span>${atuais ? '<button class="btn small" type="button" id="dvDesfazer">Desfazer a divisão</button>' : ''}
           <button class="btn small" type="button" id="dvCancelar">Cancelar</button><button class="btn small primary" type="button" id="dvSalvar">Salvar divisão</button>`
@@ -752,25 +752,57 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     function erro(t) { msgErro = t || ''; const e = jan.querySelector('#dvErro'); if (e) e.textContent = msgErro; }
     function mudarSeg(i, novo) {   // a parte i passa a ter "novo" segundos; a parte seguinte absorve a diferença
       const lim = P[i].seg + P[i + 1].seg - 1;
-      if (!(novo >= 1) || novo > lim) { erro(`A parte ${i + 1} precisa ter entre 1 e ${nf(lim)} s (a parte ${i + 2} precisa ficar com pelo menos 1 s).`); desenhar(); return; }
-      P[i + 1].seg = P[i].seg + P[i + 1].seg - novo; P[i].seg = novo; erro(''); desenhar(`tr[data-i="${i + 1}"] .dp-fim, tr[data-i="${i + 1}"] .dp-prog`);
+      if (!(novo >= 1) || novo > lim) { erro(`A parte ${i + 1} precisa ter entre 1 e ${nf(lim)} s (a parte ${i + 2} precisa ficar com pelo menos 1 s).`); sincronizar(); return false; }
+      if (novo !== P[i].seg) { P[i + 1].seg = P[i].seg + P[i + 1].seg - novo; P[i].seg = novo; }
+      erro(''); sincronizar(); return true;
     }
+    // atualiza horários, durações e a barra sem redesenhar a janela (não atrapalha quem está digitando)
+    function sincronizar() {
+      let t = ini;
+      P.forEach((p, i) => {
+        const tr = jan.querySelector(`tbody tr[data-i="${i}"]`); if (!tr) return;
+        tr.querySelector('.dp-ini').textContent = hmsDe(t); t += p.seg;
+        const fim = tr.querySelector('.dp-fim'), seg = tr.querySelector('.dp-seg');
+        if (fim && fim !== document.activeElement) fim.value = hmsDe(t);
+        if (seg && seg !== document.activeElement) seg.value = p.seg;
+        const ft = tr.querySelector('.dp-fimtx'); if (ft) ft.textContent = hmsDe(t);
+        const st = tr.querySelector('.dp-segtx'); if (st) st.textContent = nf(p.seg);
+        const b = jan.querySelector(`.dv-barra span[data-i="${i}"]`); if (b) { b.style.width = (p.seg / tc * 100) + '%'; b.title = `Parte ${i + 1}: ${nf(p.seg)} s`; }
+      });
+    }
+    // o Fim e a duração só valem quando você termina de digitar (Enter, Tab ou clicar fora)
+    function confirmarTempo(t) {
+      const tr = t.closest('tr[data-i]'); if (!tr) return true;
+      const i = +tr.dataset.i;
+      if (t.classList.contains('dp-seg')) return mudarSeg(i, Math.round(Number(t.value)));
+      const f = segDe(t.value); if (f == null) { erro('Hora inválida. Use hh:mm:ss.'); sincronizar(); return false; }
+      const inicioParte = ini + P.slice(0, i).reduce((a, p) => a + p.seg, 0);
+      return mudarSeg(i, ((f - inicioParte) % 86400 + 86400) % 86400);
+    }
+    let editando = null;
+    jan.addEventListener('input', e => { if (e.target.matches && e.target.matches('.dp-fim, .dp-seg')) editando = e.target; });
+    jan.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('.dp-fim, .dp-seg')) { const t = e.target; setTimeout(() => { if (t.isConnected && editando === t) { editando = null; confirmarTempo(t); } }, 0); } });
+    jan.addEventListener('keydown', e => {
+      const t = e.target; if (e.key !== 'Enter' || !t.matches || !t.matches('.dp-fim, .dp-seg')) return;
+      e.preventDefault(); editando = null;
+      if (!confirmarTempo(t)) return;
+      const i = +t.closest('tr').dataset.i;
+      const prox = jan.querySelector(`tbody tr[data-i="${i}"] .dp-prog`); if (prox) prox.focus();
+    });
     jan.addEventListener('input', e => { const tr = e.target.closest('tr[data-i]'); if (tr && e.target.classList.contains('dp-obs')) P[+tr.dataset.i].obs = e.target.value.trim(); });
     jan.addEventListener('change', e => {
       const tr = e.target.closest('tr[data-i]'); if (!tr) return;
       const i = +tr.dataset.i, t = e.target;
-      if (t.classList.contains('dp-seg')) mudarSeg(i, Math.round(Number(t.value)));
-      else if (t.classList.contains('dp-fim')) {
-        const f = segDe(t.value); if (f == null) { desenhar(); return; }
-        const inicioParte = ini + P.slice(0, i).reduce((a, p) => a + p.seg, 0);
-        mudarSeg(i, ((f - inicioParte) % 86400 + 86400) % 86400);
-      } else if (t.classList.contains('dp-prog')) { P[i].programada = t.value; if (!naoProgramada(t.value)) P[i].sub = ''; desenhar(naoProgramada(t.value) ? `tr[data-i="${i}"] .dp-sub` : `tr[data-i="${i}"] .dp-obs`); }
+      if (t.classList.contains('dp-seg') || t.classList.contains('dp-fim')) return;   // confirmados ao sair do campo
+      else if (t.classList.contains('dp-prog')) { P[i].programada = t.value; if (!naoProgramada(t.value)) P[i].sub = ''; desenhar(naoProgramada(t.value) ? `tr[data-i="${i}"] .dp-sub` : `tr[data-i="${i}"] .dp-obs`); }
       else if (t.classList.contains('dp-sub')) { P[i].sub = t.value; desenhar(`tr[data-i="${i}"] .dp-obs`); }
       else if (t.classList.contains('dp-obs')) P[i].obs = t.value.trim();
     });
     jan.addEventListener('click', async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.classList.contains('dv-x') || b.id === 'dvCancelar') return fechar();
+      // confirma um Fim/duração que ainda estava sendo digitado
+      if (editando && editando.isConnected) { const x = editando; editando = null; if (!confirmarTempo(x)) return; }
       if (b.id === 'dvMais') {   // divide ao meio a parte mais longa
         let k = 0; P.forEach((p, i) => { if (p.seg > P[k].seg) k = i; });
         if (P[k].seg < 2) { erro('Não dá para dividir mais.'); return; }
