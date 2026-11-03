@@ -80,6 +80,20 @@ input.aj{width:150px;font:inherit;padding:3px 5px;border:1px solid var(--line,#c
 td.precisa input.aj{border:1.5px dashed var(--warn);background:var(--warn-bg)}
 td.precisa input.aj::placeholder{color:var(--warn);font-weight:600;opacity:1}
 .legenda-precisa{display:inline-block;border:1.5px dashed var(--warn);background:var(--warn-bg);color:var(--warn);font-weight:600;border-radius:4px;padding:0 6px}
+.div-btn{border:0;background:none;color:var(--muted);cursor:pointer;padding:0 2px;margin-left:3px;font:600 12px var(--sans);line-height:1;border-radius:3px;opacity:.55}
+.div-btn:hover,.div-btn:focus{opacity:1;color:var(--accent);background:var(--info-bg)}
+.div-res{border:1px solid var(--accent);background:var(--info-bg);color:var(--info);border-radius:4px;padding:2px 7px;font:600 12px var(--sans);cursor:pointer}
+tr.parte td{background:color-mix(in srgb,var(--info-bg) 35%,transparent);font-size:.94em;border-top:0}
+tr.parte td.pn{color:var(--muted);text-align:right}
+.dv-fundo{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:80}
+.dv-jan{position:fixed;z-index:81;left:50%;top:70px;transform:translateX(-50%);width:min(980px,calc(100vw - 24px));max-height:calc(100vh - 100px);overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.3);padding:14px 16px}
+.dv-jan h3{margin:0 0 4px;font-size:16px}.dv-jan table{width:100%;border-collapse:collapse;margin-top:10px}
+.dv-jan th,.dv-jan td{padding:4px 5px;text-align:left;border-bottom:1px solid var(--line);font-size:13px}
+.dv-jan input[type=time]{width:135px}.dv-jan input.dp-seg{width:70px}.dv-jan input.dp-obs{width:170px}
+.dv-jan .dv-x{position:absolute;right:10px;top:8px;border:0;background:none;font-size:20px;cursor:pointer;color:var(--muted)}
+.dv-jan .dv-erro{color:var(--bad);font-weight:600;min-height:18px;margin-top:6px}
+.dv-barra{height:14px;display:flex;border-radius:4px;overflow:hidden;margin-top:8px;border:1px solid var(--line)}
+.dv-barra span{display:block;height:100%;border-right:2px solid var(--surface)}
 .legenda-eu{display:inline-block;background:var(--eu-bg);color:var(--eu);font-weight:600;border-radius:4px;padding:1px 6px}
 td select{max-width:210px}
 tr.salvando td{opacity:.6}
@@ -249,10 +263,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-03a"></script>
-<script src="planilha.js?v=2026-11-03a"></script>
-<script src="filtros.js?v=2026-11-03a"></script>
-<script src="abas.js?v=2026-11-03a"></script>
+<script src="comum.js?v=2026-11-03b"></script>
+<script src="planilha.js?v=2026-11-03b"></script>
+<script src="filtros.js?v=2026-11-03b"></script>
+<script src="abas.js?v=2026-11-03b"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -320,6 +334,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     for (const r of [sub, prog, leg]) if (r.error) throw new Error(r.error.message);
     S.classif = {}; cls.forEach(c => S.classif[c.nreg] = c);
     S.aj = {}; (await MG.buscarTudo('ajustes', '*')).forEach(a => S.aj[a.nreg] = a);
+    S.div = {}; (await MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte'])).forEach(d => (S.div[d.nreg] = S.div[d.nreg] || []).push(d));
+    Object.values(S.div).forEach(xs => xs.sort((a, b) => a.parte - b.parte));
     S.pend = {}; pen.forEach(p => S.pend[p.nreg] = p);
     const porOrdem = (a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || String(a.programada || a.subgrupo).localeCompare(String(b.programada || b.subgrupo), 'pt');
     S.subgruposTodos = (sub.data || []).sort(porOrdem);
@@ -376,16 +392,24 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   // Quais campos precisam ser preenchidos: definido por subgrupo (ou pela programada) na aba Menus.
   const PRECISA_COL = ['precisa_conjunto', 'precisa_item', 'precisa_problema', 'precisa_solucao'];
   function camposPrecisa(l) {
-    const c = S.classif[l.nreg]; if (!c || !c.programada) return [];
-    const chave = c.subgrupo && c.subgrupo !== '-' ? c.subgrupo : c.programada;
-    const sg = subDe(chave) || subDe(legado(chave)); if (!sg) return [];
-    return AJ_CAMPOS.filter((k, i) => sg[PRECISA_COL[i]]);
+    const cs = (partesDe(l) || [S.classif[l.nreg]]).filter(c => c && c.programada);
+    const sgs = cs.map(c => { const chave = c.subgrupo && c.subgrupo !== '-' ? c.subgrupo : c.programada; return subDe(chave) || subDe(legado(chave)); }).filter(Boolean);
+    return AJ_CAMPOS.filter((k, i) => sgs.some(sg => sg[PRECISA_COL[i]]));
   }
   const faltaCampo = (l, k) => camposPrecisa(l).includes(k) && !String(vl(l, k) || '').trim();
   const faltaAlgum = l => camposPrecisa(l).some(k => faltaCampo(l, k));
   const ajDe = l => (S.aj && S.aj[l.nreg]) || null;
   const vl = (l, k) => { const a = ajDe(l); return a && a[k] != null ? a[k] : l[k]; };
   const ehMeu = (l, k) => { const a = ajDe(l); return !!(a && a[k] != null); };
+  // ---- divisão de um apontamento em partes (cada parte com o seu tempo e a sua classificação) ----
+  const partesDe = l => { const xs = S.div && S.div[l.nreg]; return xs && xs.length > 1 ? xs : null; };
+  // Para as análises: cada registro vira uma ou mais "fatias" com a fração do tempo e a classificação de cada uma.
+  function fatias(l) {
+    const ps = partesDe(l), tc = l.t_ciclo_s || 0;
+    if (!ps || !tc) return [{l, frac: 1, c: S.classif[l.nreg] || {}}];
+    const tot = ps.reduce((a, p) => a + p.segundos, 0) || tc;
+    return ps.map(p => ({l, frac: p.segundos / tot, c: p, parte: p}));
+  }
   function celulaAj(l, k) {
     const meu = ehMeu(l, k), v = vl(l, k) || '', falta = faltaCampo(l, k);
     const dica = falta ? 'Precisa preencher (pela classificação desta parada)' : meu ? `Preenchido por você. Original do operador: ${l[k] ? l[k] : '(vazio)'}` : (l[k] ? 'Preenchido pelo operador' : '');
@@ -432,7 +456,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     {chave: 'sol', valor: l => vl(l, 'solucao')}, {chave: 'obs', valor: l => l.observacao}, {chave: 'minhaobs', valor: l => (ajDe(l) || {}).obs}]});
 
   // Setas do teclado: andar entre Programada e Subgrupo como numa planilha (passa de página nas bordas)
-  const GA = MGTeclado.grade($('tabela'), {seletor: 'select.prog, select.sub, input.aj', chaveLinha: tr => tr.dataset.n,
+  const GA = MGTeclado.grade($('tabela'), {seletor: 'select.prog, select.sub, button.div-res, input.aj', chaveLinha: tr => tr.dataset.n,
     aoBorda: (dir, col) => {
       const tot = Math.ceil(FA.aplicar(filtradas()).length / 100);
       if (dir === 'baixo' && S.pagina < tot - 1) { S.pagina++; renderApont(); GA.focarPrimeira(col); return true; }
@@ -476,21 +500,33 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       const tkl = tk(l);
       const fora = tc != null ? tc - tkl.takt : null;
       const np = naoProgramada(c.programada);
+      const ps = partesDe(l);
       let acao = '';
       if (S.dona && sit === 'pendente') acao = ` <button class="btn small ign" type="button">Ignorar</button>`;
       if (S.dona && sit === 'ignorada') acao = ` <button class="btn small desf" type="button">Desfazer</button>`;
       h += `<tr data-n="${l.nreg}">
         <td class="num">${l.nreg}</td><td class="num">${esc((l.data_hora || '').slice(0, 19).replace('T', ' '))}</td>
-        <td>${esc(TURNO[l.idturno] || l.idturno || '')}</td><td class="num">${esc(l.hora_anterior || '')}</td><td class="num">${esc(l.hora || '')}</td>
+        <td>${esc(TURNO[l.idturno] || l.idturno || '')}</td><td class="num">${esc(l.hora_anterior || '')}</td><td class="num">${esc(l.hora || '')}${S.dona && tc > 1 ? '<button class="div-btn" type="button" title="Dividir este apontamento em partes (cada uma com o seu motivo)">÷</button>' : ''}</td>
         <td class="num">${tc == null ? '' : nf(tc)}</td><td class="num">${tc == null ? '' : nf(tc - tkl.nominal)}</td>
         <td class="num">${fora == null ? '' : nf(fora)}</td><td class="num" title="takt ${tkl.takt} s · nominal ${tkl.nominal} s">${fora == null ? '' : n1(fora / tkl.nominal)}</td>
-        <td class="mine"><select class="prog" ${ed}><option value=""></option>${progOpts}</select></td>
+        ${ps ? `<td class="mine"><button class="div-res" type="button" title="Abrir a divisão">÷ ${ps.length} partes</button></td>
+        <td class="mine grp muted">ver partes</td><td class="mine seis"></td><td class="mine"></td>` : `<td class="mine"><select class="prog" ${ed}><option value=""></option>${progOpts}</select></td>
         <td class="mine grp">${esc(c.grupo || '')}</td><td class="mine seis">${esc(c.seis_perdas || '')}</td>
-        <td class="mine">${np ? `<select class="sub" ${ed}><option value=""></option>${subOpts}</select>` : `<span class="subtx">${esc(c.subgrupo || '')}</span>`}</td>
+        <td class="mine">${np ? `<select class="sub" ${ed}><option value=""></option>${subOpts}</select>` : `<span class="subtx">${esc(c.subgrupo || '')}</span>`}</td>`}
         <td>${esc(operTexto(l.oee_operador))}</td>
         <td><span class="pill ${sit}">${ROT_OP[sit]}</span>${acao}</td>
         ${AJ_CAMPOS.map(k => celulaAj(l, k)).join('')}<td class="txt">${esc(l.observacao || '')}</td>
         <td class="mine${S.dona ? '' : ' txt'}">${S.dona ? `<input class="aj" data-k="obs" value="${esc((ajDe(l) || {}).obs || '')}" style="width:200px">` : esc((ajDe(l) || {}).obs || '')}</td></tr>`;
+      if (ps) {
+        const perd = tc - tkl.nominal, tot = ps.reduce((a, p) => a + p.segundos, 0) || tc;
+        ps.forEach((p, i) => {
+          const fr = p.segundos / tot;
+          h += `<tr class="parte" data-pai="${l.nreg}"><td class="pn">↳ ${i + 1}/${ps.length}</td><td></td><td></td><td class="num">${esc(p.inicio || '')}</td><td class="num">${esc(p.fim || '')}</td>
+            <td class="num">${nf(p.segundos)}</td><td class="num">${nf(Math.round(perd * fr))}</td><td class="num">${fora == null ? '' : nf(Math.round(fora * fr))}</td><td class="num">${fora == null ? '' : n1(fora * fr / tkl.nominal)}</td>
+            <td class="mine">${esc(p.programada || '')}</td><td class="mine">${esc(p.grupo && p.grupo !== '-' ? p.grupo : '')}</td><td class="mine">${esc(p.seis_perdas && p.seis_perdas !== '-' ? p.seis_perdas : '')}</td><td class="mine">${esc(p.subgrupo && p.subgrupo !== '-' ? p.subgrupo : '')}</td>
+            <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="mine txt">${esc(p.obs || '')}</td></tr>`;
+        });
+      }
     }
     h += '</tbody>';
     if (!pag.length) h = cab + '<tbody><tr><td class="muted" colspan="21" style="padding:18px">Nenhum registro com esses filtros.</td></tr></tbody>';
@@ -516,16 +552,18 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const soma = xs => xs.reduce((a, l) => a + (l.t_ciclo_s - tk(l).takt), 0);
     const kits = xs => xs.reduce((a, l) => a + (l.t_ciclo_s - tk(l).takt) / tk(l).nominal, 0);
     const h = s => (s / 3600).toLocaleString('pt-BR', {maximumFractionDigits: 1}) + ' h';
-    const cls = l => S.classif[l.nreg] || {};
-    const setup = n.filter(l => norm(cls(l).seis_perdas) === 'setup e ajuste');
-    const quebra = n.filter(l => norm(legado(cls(l).subgrupo)) === 'quebra de maquina');
+    // apontamentos divididos entram com a fração de tempo de cada parte
+    const fs = n.flatMap(fatias);
+    const somaF = xs => xs.reduce((a, f) => a + (f.l.t_ciclo_s - tk(f.l).takt) * f.frac, 0);
+    const setup = fs.filter(f => norm(f.c.seis_perdas) === 'setup e ajuste');
+    const quebra = fs.filter(f => norm(legado(f.c.subgrupo)) === 'quebra de maquina');
     const media = n.reduce((a, l) => a + l.t_ciclo_s, 0) / n.length;
     return `
       <div class="kpi"><span>Média do ciclo (paradas)</span><b>${nf(Math.round(media))} s</b></div>
       <div class="kpi"><span>Kits perdidos</span><b>${n1(kits(n))}</b></div>
       <div class="kpi"><span>Tempo perdido acima do takt</span><b>${h(soma(n))}</b></div>
-      <div class="kpi"><span>Tempo perdido por setup</span><b>${h(soma(setup))}</b></div>
-      <div class="kpi"><span>Tempo perdido por quebra</span><b>${h(soma(quebra))}</b></div>`;
+      <div class="kpi"><span>Tempo perdido por setup</span><b>${h(somaF(setup))}</b></div>
+      <div class="kpi"><span>Tempo perdido por quebra</span><b>${h(somaF(quebra))}</b></div>`;
   }
 
   async function salvarLinha(tr) {
@@ -618,10 +656,138 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     }
   }
   $('tabela').addEventListener('click', async e => {
-    const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
+    const tr = e.target.closest('tr[data-n]'); if (!tr) return;
+    if (e.target.closest('.div-btn, .div-res')) { const l = S.linhas.find(x => x.nreg === Number(tr.dataset.n)); if (l) abrirDivisao(l, e.target.closest('button')); return; }
+    if (!S.dona) return;
     if (e.target.classList.contains('ign')) { if (await marcarIgnorada(Number(tr.dataset.n), true)) { aviso('Ignorada'); renderApont(); renderPend(); } }
     if (e.target.classList.contains('desf')) { if (await marcarIgnorada(Number(tr.dataset.n), false)) { aviso('Voltou para pendente'); renderApont(); renderPend(); } }
   });
+
+  /* ---------- janela de divisão de um apontamento ---------- */
+  const segDe = t => { const m = String(t || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/); return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+(m[3] || 0)) : null; };
+  const hmsDe = s => { s = ((Math.round(s) % 86400) + 86400) % 86400; const p = n => String(n).padStart(2, '0'); return p(Math.floor(s / 3600)) + ':' + p(Math.floor(s % 3600 / 60)) + ':' + p(s % 60); };
+  function classDe(programada, sub) {
+    if (!programada) return null;
+    if (naoProgramada(programada)) { if (!sub) return null; const s = subDe(sub) || {}; return {programada, subgrupo: sub, grupo: s.grupo || null, seis_perdas: s.seis_perdas || null}; }
+    const s = subDe(programada);
+    return {programada, subgrupo: s ? programada : '-', grupo: '-', seis_perdas: '-'};
+  }
+  function abrirDivisao(l, origem) {
+    const tc = l.t_ciclo_s, ini = segDe(l.hora_anterior);
+    if (!(tc > 1) || ini == null) { aviso('Este apontamento não tem hora anterior ou tempo para dividir.'); return; }
+    const ed = S.dona;
+    const atuais = partesDe(l);
+    const c0 = S.classif[l.nreg] || {};
+    let P = atuais ? atuais.map(p => ({seg: p.segundos, programada: p.programada || '', sub: p.subgrupo && p.subgrupo !== '-' ? p.subgrupo : '', obs: p.obs || ''}))
+      : [{seg: Math.floor(tc / 2), programada: c0.programada || '', sub: c0.subgrupo && c0.subgrupo !== '-' ? c0.subgrupo : '', obs: ''}, {seg: tc - Math.floor(tc / 2), programada: '', sub: '', obs: ''}];
+    const somaAtual = P.reduce((a, p) => a + p.seg, 0);
+    if (somaAtual !== tc) P[P.length - 1].seg = Math.max(1, P[P.length - 1].seg + tc - somaAtual);   // o tempo do coletor mudou: ajusta a última parte
+    const CORES = ['#1D5E8A', '#C26A1B', '#2E8B57', '#8A3FA0', '#B23A48', '#6B7A1F', '#3A6EA5', '#9C6B30'];
+    const fundo = document.createElement('div'); fundo.className = 'dv-fundo';
+    const jan = document.createElement('div'); jan.className = 'dv-jan'; jan.setAttribute('role', 'dialog'); jan.setAttribute('aria-label', 'Dividir apontamento');
+    document.body.append(fundo, jan);
+    const progOpts = sel => '<option value=""></option>' + S.programadas.map((p, i) => `<option value="${esc(p.programada)}" ${p.programada === sel ? 'selected' : ''}>${i + 1} · ${esc(p.programada)}</option>`).join('')
+      + (sel && !S.programadas.some(p => p.programada === sel) ? `<option selected value="${esc(sel)}">${esc(sel)}</option>` : '');
+    const subOpts = sel => '<option value=""></option>' + subsNP().map((s, i) => `<option value="${esc(s.subgrupo)}" ${s.subgrupo === sel ? 'selected' : ''}>${i + 1} · ${esc(s.subgrupo)}</option>`).join('')
+      + (sel && !subsNP().some(s => s.subgrupo === sel) ? `<option selected value="${esc(sel)}">${esc(sel)}</option>` : '');
+    function fechar() { fundo.remove(); jan.remove(); document.removeEventListener('keydown', teclaEsc, true); if (origem && origem.isConnected) origem.focus({preventScroll: true}); else GA.restaurar(GA.lembrar()); }
+    function teclaEsc(e) { if (e.key === 'Escape' && !document.querySelector('.mg-esc')) { e.preventDefault(); fechar(); } }
+    document.addEventListener('keydown', teclaEsc, true);
+    fundo.addEventListener('click', fechar);
+    function desenhar(focoSel) {
+      let t = ini;
+      const linhas = P.map((p, i) => {
+        const a = t; t += p.seg; const ult = i === P.length - 1;
+        const dis = ed ? '' : 'disabled';
+        return `<tr data-i="${i}"><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${CORES[i % CORES.length]}"></span> ${i + 1}</td>
+          <td class="num">${hmsDe(a)}</td>
+          <td>${ult ? `<span class="num">${hmsDe(t)}</span>` : `<input type="time" step="1" class="dp-fim" value="${hmsDe(t)}" ${dis}>`}</td>
+          <td>${ult ? `<span class="num">${nf(p.seg)}</span>` : `<input type="number" min="1" class="dp-seg" value="${p.seg}" ${dis}>`}</td>
+          <td><select class="dp-prog" ${dis}>${progOpts(p.programada)}</select></td>
+          <td>${naoProgramada(p.programada) ? `<select class="dp-sub" ${dis}>${subOpts(p.sub)}</select>` : '<span class="muted">—</span>'}</td>
+          <td><input class="dp-obs" value="${esc(p.obs)}" placeholder="observação" ${dis}></td>
+          <td>${ed && P.length > 2 ? '<button class="btn small dp-tirar" type="button" title="Juntar esta parte com a anterior">×</button>' : ''}</td></tr>`;
+      }).join('');
+      jan.innerHTML = `<button class="dv-x" type="button" title="Fechar (Esc)">×</button>
+        <h3>Dividir apontamento ${l.nreg}</h3>
+        <div class="muted">${dBR(l.dia)} · turno ${esc(TURNO[l.idturno] || l.idturno || '')} · de <b>${esc(l.hora_anterior)}</b> a <b>${esc(l.hora)}</b> · ${nf(tc)} s
+          · operador: ${esc(operTexto(l.oee_operador) || '—')}</div>
+        <div class="dv-barra">${P.map((p, i) => `<span style="width:${p.seg / tc * 100}%;background:${CORES[i % CORES.length]}" title="Parte ${i + 1}: ${nf(p.seg)} s"></span>`).join('')}</div>
+        <table><thead><tr><th>Parte</th><th>Início</th><th>Fim</th><th>Duração (s)</th><th>Programada</th><th>Subgrupo do OEE</th><th>Observação</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
+        <div class="dv-erro" id="dvErro">${esc(msgErro)}</div>
+        <p class="muted" style="margin:4px 0 10px;font-size:12px">Mude o <b>Fim</b> (ou a duração) de uma parte e a parte seguinte se ajusta. Nas análises, o tempo perdido, o fora do takt e os kits perdidos do apontamento são repartidos na proporção da duração de cada parte. Na lista, o apontamento fica com a classificação da parte mais longa.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${ed ? `<button class="btn small" type="button" id="dvMais">+ Dividir mais</button>
+          <span style="flex:1"></span>${atuais ? '<button class="btn small" type="button" id="dvDesfazer">Desfazer a divisão</button>' : ''}
+          <button class="btn small" type="button" id="dvCancelar">Cancelar</button><button class="btn small primary" type="button" id="dvSalvar">Salvar divisão</button>`
+          : '<span style="flex:1"></span><button class="btn small" type="button" id="dvCancelar">Fechar</button>'}</div>`;
+      if (focoSel) { const el = jan.querySelector(focoSel); if (el) el.focus(); }
+    }
+    let msgErro = '';
+    function erro(t) { msgErro = t || ''; const e = jan.querySelector('#dvErro'); if (e) e.textContent = msgErro; }
+    function mudarSeg(i, novo) {   // a parte i passa a ter "novo" segundos; a parte seguinte absorve a diferença
+      const lim = P[i].seg + P[i + 1].seg - 1;
+      if (!(novo >= 1) || novo > lim) { erro(`A parte ${i + 1} precisa ter entre 1 e ${nf(lim)} s (a parte ${i + 2} precisa ficar com pelo menos 1 s).`); desenhar(); return; }
+      P[i + 1].seg = P[i].seg + P[i + 1].seg - novo; P[i].seg = novo; erro(''); desenhar(`tr[data-i="${i + 1}"] .dp-fim, tr[data-i="${i + 1}"] .dp-prog`);
+    }
+    jan.addEventListener('input', e => { const tr = e.target.closest('tr[data-i]'); if (tr && e.target.classList.contains('dp-obs')) P[+tr.dataset.i].obs = e.target.value.trim(); });
+    jan.addEventListener('change', e => {
+      const tr = e.target.closest('tr[data-i]'); if (!tr) return;
+      const i = +tr.dataset.i, t = e.target;
+      if (t.classList.contains('dp-seg')) mudarSeg(i, Math.round(Number(t.value)));
+      else if (t.classList.contains('dp-fim')) {
+        const f = segDe(t.value); if (f == null) { desenhar(); return; }
+        const inicioParte = ini + P.slice(0, i).reduce((a, p) => a + p.seg, 0);
+        mudarSeg(i, ((f - inicioParte) % 86400 + 86400) % 86400);
+      } else if (t.classList.contains('dp-prog')) { P[i].programada = t.value; if (!naoProgramada(t.value)) P[i].sub = ''; desenhar(naoProgramada(t.value) ? `tr[data-i="${i}"] .dp-sub` : `tr[data-i="${i}"] .dp-obs`); }
+      else if (t.classList.contains('dp-sub')) { P[i].sub = t.value; desenhar(`tr[data-i="${i}"] .dp-obs`); }
+      else if (t.classList.contains('dp-obs')) P[i].obs = t.value.trim();
+    });
+    jan.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.classList.contains('dv-x') || b.id === 'dvCancelar') return fechar();
+      if (b.id === 'dvMais') {   // divide ao meio a parte mais longa
+        let k = 0; P.forEach((p, i) => { if (p.seg > P[k].seg) k = i; });
+        if (P[k].seg < 2) { erro('Não dá para dividir mais.'); return; }
+        const a = Math.floor(P[k].seg / 2);
+        P.splice(k + 1, 0, {seg: P[k].seg - a, programada: '', sub: '', obs: ''}); P[k].seg = a;
+        erro(''); desenhar(`tr[data-i="${k + 1}"] .dp-prog`); return;
+      }
+      if (b.classList.contains('dp-tirar')) {
+        const i = +b.closest('tr').dataset.i, j = i > 0 ? i - 1 : 1;
+        P[j].seg += P[i].seg; P.splice(i, 1); erro(''); desenhar(); return;
+      }
+      if (b.id === 'dvDesfazer') {
+        if (!confirm('Desfazer a divisão? O apontamento volta a ter uma classificação só (a da parte mais longa).')) return;
+        b.disabled = true;
+        const {error} = await sb.from('divisoes').delete().eq('nreg', l.nreg);
+        if (error) { erro('Erro ao desfazer: ' + error.message); b.disabled = false; return; }
+        delete S.div[l.nreg]; aviso('Divisão desfeita'); fechar(); renderApont(); renderPareto(); return;
+      }
+      if (b.id === 'dvSalvar') {
+        jan.querySelectorAll('.dp-obs').forEach((x, i) => { if (P[i]) P[i].obs = x.value.trim(); });
+        const cls = P.map(p => classDe(p.programada, p.sub));
+        const falta = cls.findIndex(c => !c);
+        if (falta >= 0) { erro(`Classifique a parte ${falta + 1} (programada${naoProgramada(P[falta].programada) ? ' e subgrupo' : ''}).`); return; }
+        if (P.reduce((a, p) => a + p.seg, 0) !== tc || P.some(p => !(p.seg >= 1))) { erro('As durações precisam somar ' + nf(tc) + ' s.'); return; }
+        b.disabled = true; erro('');
+        const quem = S.sess.user.email, quando = new Date().toISOString();
+        let t = ini;
+        const regs = P.map((p, i) => { const a = t; t += p.seg; return {nreg: l.nreg, parte: i + 1, inicio: hmsDe(a), fim: hmsDe(t), segundos: p.seg, ...cls[i], obs: p.obs || null, atualizado_em: quando, atualizado_por: quem}; });
+        let r = await sb.from('divisoes').delete().eq('nreg', l.nreg);
+        if (!r.error) r = await sb.from('divisoes').insert(regs);
+        if (r.error) { erro('Erro ao salvar: ' + r.error.message); b.disabled = false; return; }
+        // a classificação "principal" do apontamento é a da parte mais longa (usada na lista, nos filtros e nas divergências)
+        let k = 0; P.forEach((p, i) => { if (p.seg > P[k].seg) k = i; });
+        const reg = {nreg: l.nreg, ...cls[k], atualizado_por: quem, atualizado_em: quando};
+        r = await sb.from('classificacao').upsert(reg, {onConflict: 'nreg'});
+        if (r.error) { erro('Partes salvas, mas houve erro na classificação principal: ' + r.error.message); b.disabled = false; return; }
+        S.div[l.nreg] = regs; S.classif[l.nreg] = reg;
+        aviso(`Apontamento dividido em ${P.length} partes`); fechar(); renderApont(); renderPareto();
+      }
+    });
+    MGEscolha.anexar(jan, 'select.dp-prog, select.dp-sub');
+    desenhar(ed ? 'tr[data-i="0"] .dp-fim' : '#dvCancelar');
+  }
 
   /* ---------- aba Pendências (todas as datas) ---------- */
   async function carregarPendencias() {
