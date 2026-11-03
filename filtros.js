@@ -195,6 +195,7 @@ window.MGTeclado = (function () {
       else if (k === 'ArrowLeft' && (!texto || (el.selectionStart === 0 && el.selectionEnd === 0))) dir = 'esq';
       else if (k === 'ArrowRight' && (!texto || (el.selectionStart === el.value.length && el.selectionEnd === el.value.length))) dir = 'dir';
       else if (k === 'Enter' && texto && el.tagName !== 'TEXTAREA') dir = 'baixo';
+      else if (k === 'Enter' && el.tagName === 'SELECT' && window.MGEscolha && MGEscolha.usa(el)) return;   // a busca por texto/número cuida
       else if (k === 'Enter' && el.tagName === 'SELECT' && el.showPicker) { e.preventDefault(); try { el.showPicker(); } catch (_) {} return; }
       if (!dir) return;
       if (el.tagName === 'TEXTAREA' && (dir === 'cima' || dir === 'baixo')) {   // em texto de várias linhas, só sai da célula na primeira/última linha
@@ -360,4 +361,87 @@ window.MGZoom = (function () {
     window.addEventListener('resize', () => { if (ajusteAuto[tabelaId]) caber(); });
   }
   return { anexar };
+})();
+
+// Escolher numa lista digitando: ao digitar numa célula de lista (select), abre uma caixa de busca que filtra as opções
+// por qualquer parte do texto (sem ligar para acentos/maiúsculas) ou pelo número da opção (1 = primeira da lista).
+window.MGEscolha = (function () {
+  const css = document.createElement('style');
+  css.textContent = `.mg-esc{position:absolute;z-index:70;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);padding:6px;width:300px;font:13px var(--sans)}
+    .mg-esc input{width:100%;box-sizing:border-box;padding:5px 7px;border:1.5px solid var(--accent);border-radius:5px;font:inherit;background:var(--surface);color:var(--ink)}
+    .mg-esc ul{list-style:none;margin:6px 0 0;padding:0;max-height:300px;overflow:auto}
+    .mg-esc li{padding:4px 7px;border-radius:4px;cursor:pointer;display:flex;gap:8px}
+    .mg-esc li b{min-width:22px;text-align:right;font:600 12px var(--mono);color:var(--muted)}
+    .mg-esc li.on{background:var(--accent);color:var(--accent-ink)}.mg-esc li.on b{color:var(--accent-ink)}
+    .mg-esc .vazio{padding:6px;color:var(--muted)}`;
+  document.head.appendChild(css);
+  const tira = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const marcados = [];   // [{tabela, seletor}]
+  let pop = null;
+  function usa(el) { return marcados.some(m => m.tabela.contains(el) && el.matches(m.seletor)); }
+  function fechar(sel, voltar) { if (pop) { pop.remove(); pop = null; } if (voltar && sel && sel.isConnected) sel.focus({ preventScroll: true }); }
+  function abrir(sel, inicial) {
+    fechar();
+    // opções com número: o número é a posição na lista (sem contar a opção vazia)
+    const ops = [...sel.options].filter(o => o.value !== '').map((o, i) => {
+      const m = o.text.match(/^(\d+)\s*·\s*(.*)$/);
+      return { valor: o.value, num: m ? m[1] : String(i + 1), nome: m ? m[2] : o.text };
+    });
+    pop = document.createElement('div');
+    pop.className = 'mg-esc';
+    pop.innerHTML = '<input type="text" placeholder="Digite parte do nome ou o número" aria-label="Buscar opção"><ul></ul>';
+    document.body.appendChild(pop);
+    const r = sel.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - 310, r.left + window.scrollX)) + 'px';
+    pop.style.top = (r.bottom + window.scrollY + 2) + 'px';
+    const inp = pop.querySelector('input'), ul = pop.querySelector('ul');
+    let lista = [], ativo = 0;
+    function filtrar() {
+      const q = tira(inp.value);
+      if (!q) lista = ops.slice();
+      else if (/^\d+$/.test(q)) lista = ops.filter(o => o.num === q).concat(ops.filter(o => o.num !== q && o.num.startsWith(q)));
+      else {
+        const palavras = q.split(/\s+/);
+        lista = ops.filter(o => { const t = tira(o.nome); return palavras.every(p => t.includes(p)); })
+          .sort((a, b) => (tira(b.nome).startsWith(q) ? 1 : 0) - (tira(a.nome).startsWith(q) ? 1 : 0));
+      }
+      ativo = Math.max(0, lista.findIndex(o => o.valor === sel.value && !q));
+      desenhar();
+    }
+    function desenhar() {
+      const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      ul.innerHTML = lista.length ? lista.map((o, i) => `<li data-i="${i}" class="${i === ativo ? 'on' : ''}"><b>${o.num}</b><span>${esc(o.nome)}</span></li>`).join('')
+        : '<li class="vazio">Nenhuma opção com esse texto</li>';
+      const on = ul.querySelector('li.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+    }
+    function escolher(o) {
+      fechar(sel, true);
+      if (!o || sel.value === o.valor) return;
+      sel.value = o.valor;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    inp.addEventListener('input', filtrar);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (lista.length) { ativo = (ativo + 1) % lista.length; desenhar(); } }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (lista.length) { ativo = (ativo - 1 + lista.length) % lista.length; desenhar(); } }
+      else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); if (lista[ativo]) escolher(lista[ativo]); else fechar(sel, true); }
+      else if (e.key === 'Escape') { e.preventDefault(); fechar(sel, true); }
+    });
+    ul.addEventListener('mousedown', e => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); escolher(lista[+li.dataset.i]); } });
+    inp.addEventListener('blur', () => setTimeout(() => { if (pop && !pop.contains(document.activeElement)) fechar(); }, 0));
+    inp.value = inicial || '';
+    filtrar();
+    inp.focus();
+  }
+  function anexar(tabela, seletor) {
+    if (!tabela) return;
+    marcados.push({ tabela, seletor });
+    tabela.addEventListener('keydown', e => {
+      const el = e.target;
+      if (!el.matches || !el.matches(seletor) || el.disabled || e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.key === 'Enter') { e.preventDefault(); abrir(el, ''); return; }
+      if (e.key.length === 1 && e.key !== ' ') { e.preventDefault(); abrir(el, e.key); }
+    }, true);
+  }
+  return { anexar, usa, abrir };
 })();

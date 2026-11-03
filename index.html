@@ -193,7 +193,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         <label>Buscar <input type="search" id="fBusca" placeholder="texto ou registro" style="width:150px"></label>
         <span class="muted" id="resumo"></span>
       </div>
-      <p class="muted" style="margin:-4px 0 10px">Teclado: ↑ ↓ ← → andam entre as células (Programada, Subgrupo, Conjunto, Item, Problema, Solução e Minhas observações); digite a primeira letra para escolher (ex.: N para "Não programada") ou Enter para abrir a lista. Cada escolha salva na hora.</p>
+      <p class="muted" style="margin:-4px 0 10px">Teclado: ↑ ↓ ← → andam entre as células (Programada, Subgrupo, Conjunto, Item, Problema, Solução e Minhas observações). Em Programada e Subgrupo, comece a digitar uma palavra (ex.: "quebra") ou o número da opção (ex.: 1): aparece uma lista filtrada; ↑ ↓ escolhem nela, Enter confirma e Esc cancela. Enter sem digitar nada abre a lista inteira. Cada escolha salva na hora.</p>
       <div class="kpis" id="kpis"></div>
       <div class="scroll"><table id="tabela"></table></div>
       <div class="pag" id="pag"></div>
@@ -249,10 +249,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-10-30j"></script>
-<script src="planilha.js?v=2026-10-30j"></script>
-<script src="filtros.js?v=2026-10-30j"></script>
-<script src="abas.js?v=2026-10-30j"></script>
+<script src="comum.js?v=2026-11-03a"></script>
+<script src="planilha.js?v=2026-11-03a"></script>
+<script src="filtros.js?v=2026-11-03a"></script>
+<script src="abas.js?v=2026-11-03a"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -307,6 +307,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   const ROT_OP = {pendente: 'Pendente', apontado: 'Apontado', turno_anterior: 'Turno anterior não preencheu', ignorada: 'Ignorada', na: '—'};
   const naoProgramada = p => { const x = (S.programadasTodas || []).find(q => q.programada === p); return x ? !!x.exige_grupo : norm(p) === 'nao programada'; };
   const subsNP = () => S.subgrupos.filter(s => s.grupo);
+  const subOptsHTML = () => subsNP().map((s, i) => `<option value="${esc(s.subgrupo)}">${i + 1} · ${esc(s.subgrupo)}</option>`).join('');
   function subDe(nome) { return (S.subgruposTodos || S.subgrupos).find(s => s.subgrupo === nome) || null; }
   function legado(s) { return s && S.legado[s] ? S.legado[s] : s; }
 
@@ -458,8 +459,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const POR = 100, tot = Math.max(1, Math.ceil(L.length / POR));
     if (S.pagina >= tot) S.pagina = tot - 1;
     const pag = L.slice(S.pagina * POR, S.pagina * POR + POR);
-    const progOpts = S.programadas.map(p => `<option value="${esc(p.programada)}">${esc(p.programada)}</option>`).join('');
-    const subOpts = subsNP().map(s => `<option value="${esc(s.subgrupo)}">${esc(s.subgrupo)}</option>`).join('');
+    const progOpts = S.programadas.map((p, i) => `<option value="${esc(p.programada)}">${i + 1} · ${esc(p.programada)}</option>`).join('');
+    const subOpts = subOptsHTML();
     const ed = S.dona ? '' : 'disabled';
 
     const th = (k, r, c) => FA.cabecalho(k, r, c);
@@ -560,8 +561,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   function renderApontLinhaProg(tr, programada) {
     const cel = tr.querySelector('.subtx');
     if (cel) {
-      const subOpts = subsNP().map(s => `<option value="${esc(s.subgrupo)}">${esc(s.subgrupo)}</option>`).join('');
-      cel.outerHTML = `<select class="sub"><option value=""></option>${subOpts}</select>`;
+      cel.outerHTML = `<select class="sub"><option value=""></option>${subOptsHTML()}</select>`;
       const novo = tr.querySelector('select.sub'); if (novo) novo.focus();   // já fica pronto para escolher o subgrupo
     }
     tr.querySelector('.grp').textContent = ''; tr.querySelector('.seis').textContent = '';
@@ -579,6 +579,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
   FA.ligar($('tabela'), () => filtradas());
   MGZoom.anexar('tabela'); MGZoom.anexar('pTabela');
+  MGEscolha.anexar($('tabela'), 'select.prog, select.sub');
   $('tabela').addEventListener('change', e => {
     const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
     if (e.target.classList.contains('prog') || e.target.classList.contains('sub')) salvarLinha(tr);
