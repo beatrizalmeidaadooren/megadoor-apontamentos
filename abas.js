@@ -362,7 +362,9 @@ window.MGAbas = (function () {
       <span class="muted" id="lResumo"></span>
       <button class="btn small" id="lCriar" type="button" hidden>Criar as linhas deste mês</button>
     </div>
-    <p class="muted" style="margin:0 0 8px">Teclado: setas andam entre as células. Num item, digite <b>V</b> (feita), <b>J</b> (justificada), <b>P</b> (erro de planejamento), <b>F</b> (faltou), <b>-</b> (não se aplica) ou <b>Delete</b> (apagar): salva e já passa para o próximo item. Enter abre o menu do item.</p>
+    <p class="muted" style="margin:0 0 8px">Teclado: setas andam entre as células. Num item, digite <b>V</b> (feita), <b>J</b> (justificada), <b>P</b> (erro de planejamento), <b>F</b> (faltou), <b>-</b> (não se aplica) ou <b>Delete</b> (apagar): salva e já passa para o próximo item. Enter abre o menu do item.
+      <b>Várias de uma vez:</b> Shift + clique (ou Shift + setas) seleciona um bloco; Ctrl + clique junta ou tira células da seleção. Depois digite a letra ou clique numa célula selecionada para escolher no menu. Esc limpa a seleção.</p>
+    <div id="lSelInfo" class="muted" style="margin:0 0 6px;min-height:18px;font-weight:600;color:var(--accent)"></div>
     <div class="scroll"><table id="lTabela" class="limpeza"></table></div>
     <div id="lMenu" class="menu-item" hidden></div>`;
   }
@@ -412,6 +414,46 @@ window.MGAbas = (function () {
     if (!regs.length) h = `<tbody><tr><td class="muted" style="padding:18px">Nenhuma linha neste mês${CTX.dona ? '. Use "Criar as linhas deste mês".' : '.'}</td></tr></tbody>`;
     $('lTabela').innerHTML = h;
     if (GL) GL.restaurar(foco);
+    selPintar();
+  }
+
+  // ---- seleção de várias células de itens (Shift / Ctrl) ----
+  const SEL = { set: new Set(), ancora: null };   // chaves 'data|turno|item'
+  const chaveCel = b => { const tr = b.closest('tr'); return tr.dataset.d + '|' + tr.dataset.t + '|' + b.dataset.i; };
+  const celDe = k => { const [d, t, i] = k.split('|'); return $('lTabela').querySelector(`tr[data-d="${d}"][data-t="${t}"] button.it[data-i="${i}"]`); };
+  function selPintar() {
+    const tab = $('lTabela'); if (!tab) return;
+    tab.querySelectorAll('button.it').forEach(b => b.classList.toggle('sel', SEL.set.size > 1 && SEL.set.has(chaveCel(b))));
+    const info = $('lSelInfo'); if (info) info.textContent = SEL.set.size > 1 ? `${SEL.set.size} células selecionadas · digite V, J, P, F, - ou Delete, ou clique numa delas para escolher` : '';
+  }
+  function selLimpar() { SEL.set.clear(); selPintar(); }
+  function selBloco(a, b) {   // seleciona o retângulo entre as células a e b
+    const linhas = [...$('lTabela').querySelectorAll('tbody tr[data-d]')];
+    const ra = linhas.indexOf(a.closest('tr')), rb = linhas.indexOf(b.closest('tr')); if (ra < 0 || rb < 0) return;
+    const ia = +a.dataset.i, ib = +b.dataset.i;
+    SEL.set.clear();
+    for (let r = Math.min(ra, rb); r <= Math.max(ra, rb); r++)
+      for (let i = Math.min(ia, ib); i <= Math.max(ia, ib); i++) { const c = linhas[r].querySelector(`button.it[data-i="${i}"]`); if (c && !c.disabled) SEL.set.add(chaveCel(c)); }
+    selPintar();
+  }
+  // grava o mesmo código em todas as células selecionadas (uma gravação por linha)
+  async function selAplicar(k) {
+    const porLinha = new Map();
+    for (const ch of SEL.set) { const [d, t, i] = ch.split('|'); const kl = d + '|' + t; if (!porLinha.has(kl)) porLinha.set(kl, []); porLinha.get(kl).push(+i); }
+    const o = ITEM[k];
+    SEL.set.forEach(ch => { const c = celDe(ch); if (c) { c.className = 'it ' + o.cls + ' sel'; c.textContent = o.rot; } });
+    const tarefas = [];
+    for (const [kl, is] of porLinha) {
+      const [d, t] = kl.split('|'); const r = L.linhas.find(x => x.data === d && x.turno === t); if (!r) continue;
+      const n = Math.max(38, (r.itens || []).length, ...is.map(i => i + 1));
+      const antes = r.itens;
+      r.itens = Array.from({ length: n }, (_, j) => (r.itens || [])[j] || '');
+      is.forEach(i => { r.itens[i] = k; });
+      tarefas.push(limpezaSalvar(r, null).then(ok => { if (!ok) r.itens = antes; }));
+    }
+    await Promise.all(tarefas);
+    CTX.aviso(`${SEL.set.size} células preenchidas`);
+    limpezaRender();
   }
 
   function limpezaReg(tr) { return L.linhas.find(r => r.data === tr.dataset.d && r.turno === tr.dataset.t); }
@@ -438,10 +480,11 @@ window.MGAbas = (function () {
     const menu = $('lMenu');
     const tr = btn.closest('tr'), i = Number(btn.dataset.i);
     L.menuBtn = btn;
-    menu.innerHTML = '<div class="muted">Só este item</div>' +
-      Object.entries(ITEM).map(([k, o]) => `<button type="button" data-k="${k}"><i class="it ${o.cls}">${o.rot}</i>${o.nome}</button>`).join('') +
-      '<div class="muted" style="margin-top:6px">Todos os itens que se aplicam a este turno</div>' +
-      ['V', 'J', 'P', 'F', ''].map(k => `<button type="button" data-k="${k}" data-linha="1"><i class="it ${ITEM[k].cls}">${ITEM[k].rot}</i>${ITEM[k].nome}</button>`).join('');
+    const varias = SEL.set.size > 1 && SEL.set.has(chaveCel(btn));
+    menu.innerHTML = `<div class="muted">${varias ? `As ${SEL.set.size} células selecionadas` : 'Só este item'}</div>` +
+      Object.entries(ITEM).map(([k, o]) => `<button type="button" data-k="${k}"${varias ? ' data-sel="1"' : ''}><i class="it ${o.cls}">${o.rot}</i>${o.nome}</button>`).join('') +
+      (varias ? '' : '<div class="muted" style="margin-top:6px">Todos os itens que se aplicam a este turno</div>' +
+      ['V', 'J', 'P', 'F', ''].map(k => `<button type="button" data-k="${k}" data-linha="1"><i class="it ${ITEM[k].cls}">${ITEM[k].rot}</i>${ITEM[k].nome}</button>`).join(''));
     const rc = btn.getBoundingClientRect();
     menu.style.left = Math.min(window.innerWidth - 300, rc.left + window.scrollX) + 'px';
     menu.style.top = (rc.bottom + window.scrollY + 4) + 'px';
@@ -450,6 +493,7 @@ window.MGAbas = (function () {
       const b = e.target.closest('button[data-k]'); if (!b) return;
       if (btn.isConnected) btn.focus({ preventScroll: true });   // a célula continua selecionada para seguir com as setas
       menu.hidden = true;
+      if (b.dataset.sel) { await selAplicar(b.dataset.k); return; }
       const r = limpezaReg(tr); if (!r) return;
       const n = Math.max(38, (r.itens || []).length);
       const itens = Array.from({ length: n }, (_, k) => (r.itens || [])[k] || '');
@@ -491,6 +535,21 @@ window.MGAbas = (function () {
     document.addEventListener('click', e => { const m = $('lMenu'); if (m && !m.hidden && !e.target.closest('#lMenu') && !e.target.closest('.it')) m.hidden = true; });
     MGZoom.anexar('lTabela');
     GL = MGTeclado.grade($('lTabela'), { seletor: 'button.it, input.li-ini, input.li-fim, input.li-pend, input.li-obs', chaveLinha: tr => tr.dataset.d + '|' + tr.dataset.t });
+    // Shift + setas aumentam a seleção; setas sozinhas voltam a uma célula só; Esc limpa
+    $('lTabela').addEventListener('mousedown', e => { if (e.shiftKey && e.target.closest('button.it')) e.preventDefault(); });
+    $('lTabela').addEventListener('keydown', e => {
+      const it = e.target.closest && e.target.closest('button.it'); if (!it) return;
+      if (e.key === 'Escape' && SEL.set.size > 1) { e.preventDefault(); SEL.set = new Set([chaveCel(it)]); SEL.ancora = chaveCel(it); selPintar(); return; }
+      if (!/^Arrow/.test(e.key)) return;
+      if (e.shiftKey && !SEL.ancora) SEL.ancora = chaveCel(it);
+      if (e.shiftKey && !SEL.set.size) SEL.set.add(chaveCel(it));
+      const shift = e.shiftKey;
+      setTimeout(() => {
+        const f = document.activeElement; if (!f || !f.matches || !f.matches('#lTabela button.it')) return;
+        if (shift) { const a = celDe(SEL.ancora) || f; selBloco(a, f); }
+        else { SEL.set = new Set([chaveCel(f)]); SEL.ancora = chaveCel(f); selPintar(); }
+      }, 0);
+    }, true);
     // Teclas no item: V feita · J justificada · P erro de planejamento · F faltou · - não se aplica · Delete apaga. Depois anda para a direita.
     $('lTabela').addEventListener('keydown', async e => {
       const it = e.target.closest && e.target.closest('button.it');
@@ -498,6 +557,7 @@ window.MGAbas = (function () {
       const k = TECLA_ITEM[e.key.toLowerCase()];
       if (k === undefined) return;
       e.preventDefault();
+      if (SEL.set.size > 1 && SEL.set.has(chaveCel(it))) { await selAplicar(k); return; }
       const tr = it.closest('tr'), i = Number(it.dataset.i), r = limpezaReg(tr); if (!r) return;
       const n = Math.max(38, (r.itens || []).length);
       const antes = r.itens;
@@ -513,7 +573,16 @@ window.MGAbas = (function () {
     $('lTabela').addEventListener('click', async e => {
       if (!CTX.dona) return;
       const it = e.target.closest('button.it');
-      if (it) { limpezaMenu(it); return; }
+      if (it) {
+        const ch = chaveCel(it);
+        if (e.shiftKey) { const a = (SEL.ancora && celDe(SEL.ancora)) || it; if (!SEL.ancora) SEL.ancora = ch; selBloco(a, it); it.focus({ preventScroll: true }); $('lMenu').hidden = true; return; }
+        if (e.ctrlKey || e.metaKey) {
+          if (SEL.set.size <= 1 && SEL.ancora && SEL.ancora !== ch) SEL.set.add(SEL.ancora);
+          SEL.set.has(ch) ? SEL.set.delete(ch) : SEL.set.add(ch); SEL.ancora = ch; selPintar(); it.focus({ preventScroll: true }); $('lMenu').hidden = true; return;
+        }
+        if (!(SEL.set.size > 1 && SEL.set.has(ch))) { SEL.set = new Set([ch]); SEL.ancora = ch; selPintar(); }
+        limpezaMenu(it); return;
+      }
       if (e.target.classList.contains('li-tudo')) {
         const tr = e.target.closest('tr'); const r = limpezaReg(tr); if (!r) return;
         const antes = r.itens;
