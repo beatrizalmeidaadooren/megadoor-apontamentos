@@ -264,10 +264,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-03k"></script>
-<script src="planilha.js?v=2026-11-03k"></script>
-<script src="filtros.js?v=2026-11-03k"></script>
-<script src="abas.js?v=2026-11-03k"></script>
+<script src="comum.js?v=2026-11-04a"></script>
+<script src="planilha.js?v=2026-11-04a"></script>
+<script src="filtros.js?v=2026-11-04a"></script>
+<script src="abas.js?v=2026-11-04a"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -1026,6 +1026,13 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     if (error) return null;
     return (data && data.valor) || {};
   }
+  // sinal de vida do programa de sincronização no computador (gravado a cada minuto enquanto ele roda)
+  async function lerVivo() {
+    const {data} = await sb.from('configuracao').select('valor').eq('chave', 'sincronizacao_vivo').maybeSingle();
+    const v = data && data.valor && data.valor.visto_em ? new Date(data.valor.visto_em) : null;
+    return {visto: v, ativo: !!v && Date.now() - v < 3 * 60000};
+  }
+  const AVISO_PARADO = 'No computador, abra a pasta "Apontamentos com o Claude" e dê dois cliques em ativar_sincronizacao_automatica.bat. O computador precisa estar ligado, com a sessão aberta e na rede da empresa.';
   const hhmm = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR').slice(0, 5) + ' às ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
   async function mostrarSinc() {
     const v = await lerSinc();
@@ -1034,8 +1041,12 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     if (v.estado === 'erro') t += ' (com erro)';
     if (v.estado === 'pedido') t = 'Atualização pedida, aguardando o computador…';
     if (v.estado === 'rodando') t = 'Atualizando os dados do coletor…';
+    const vivo = await lerVivo().catch(() => null);
+    const parado = vivo && vivo.visto && !vivo.ativo;
+    if (parado && S.dona) t += (t ? ' · ' : '') + '⚠ programa de sincronização parado desde ' + hhmm(vivo.visto);
     $('sincMsg').textContent = t;
-    $('sincMsg').title = v.mensagem || '';
+    $('sincMsg').style.color = parado ? 'var(--bad)' : '';
+    $('sincMsg').title = parado ? AVISO_PARADO : (v.mensagem || '');
     return v;
   }
   async function pedirSinc() {
@@ -1048,6 +1059,13 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         valor: {...atual, estado: 'pedido', pedido_em: pedidoEm.toISOString(), pedido_por: S.sess.user.email}}, {onConflict: 'chave'});
       if (error) throw new Error(error.message);
       $('sincMsg').textContent = 'Pedido enviado, aguardando o computador…';
+      const vivo = await lerVivo().catch(() => null);
+      if (vivo && vivo.visto && !vivo.ativo) {
+        // o programa não está rodando: avisa na hora em vez de esperar 6 minutos à toa
+        $('sincMsg').textContent = '⚠ O programa de sincronização está parado desde ' + hhmm(vivo.visto) + '. O pedido ficou guardado.';
+        $('sincMsg').style.color = 'var(--bad)';
+        $('msg').textContent = 'O programa que busca os dados do coletor não está rodando no seu computador. ' + AVISO_PARADO + ' Assim que ele voltar, atende o pedido sozinho.';
+      }
       const limite = Date.now() + 6 * 60000;
       while (Date.now() < limite) {
         await new Promise(r => setTimeout(r, 5000));
@@ -1056,7 +1074,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         if (v.estado === 'rodando') $('sincMsg').textContent = 'Atualizando os dados do coletor…';
         else if (v.estado === 'pedido' && Date.now() - pedidoEm > 90000)
           $('sincMsg').textContent = 'O computador ainda não respondeu (ele precisa estar ligado, com a sessão aberta). Continuo aguardando…';
+        if (v.estado === 'rodando') { $('sincMsg').style.color = ''; }
         if ((v.estado === 'ok' || v.estado === 'erro') && v.fim && new Date(v.fim) >= pedidoEm) {
+          $('msg').textContent = '';
           if (v.estado === 'erro') { $('msg').textContent = 'A atualização terminou com erro: ' + (v.mensagem || 'veja o sincronizacao.log'); }
           else aviso(`Atualizado: ${nf(v.enviados || 0)} registros novos ou alterados`);
           await mostrarSinc();
