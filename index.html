@@ -269,10 +269,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-05l"></script>
-<script src="planilha.js?v=2026-11-05l"></script>
-<script src="filtros.js?v=2026-11-05l"></script>
-<script src="abas.js?v=2026-11-05l"></script>
+<script src="comum.js?v=2026-11-05m"></script>
+<script src="planilha.js?v=2026-11-05m"></script>
+<script src="filtros.js?v=2026-11-05m"></script>
+<script src="abas.js?v=2026-11-05m"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -1096,7 +1096,9 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   function trocarAba(qual) {
     if (!$('sec-' + qual) || (qual === 'menus' && !S.dona)) qual = 'apont';
     S.aba = qual;
-    try { localStorage.setItem('mg-aba', qual); } catch (e) {}   // ao recarregar a página, volta para esta aba
+    // ao recarregar a página, volta para esta aba: guarda no endereço (?aba=...) e no navegador
+    try { localStorage.setItem('mg-aba', qual); } catch (e) {}
+    try { const u = new URL(location.href); if (u.searchParams.get('aba') !== qual) { u.searchParams.set('aba', qual); history.replaceState(history.state, '', u.pathname + u.search + u.hash); } } catch (e) {}
     document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.aba === qual));
     ['apont', 'pend', 'radar', 'diverg', 'montagem', 'painel', 'limpeza', 'os', 'takt', 'menus'].forEach(a => $('sec-' + a).hidden = a !== qual);
     if (qual === 'radar' && !$('frRadar').src) $('frRadar').src = 'radar.html?v=' + MG.VERSAO;
@@ -1121,8 +1123,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     $('btnSinc').hidden = !S.dona;
     mostrarSinc();
     setInterval(() => { if (!S.pedindo) mostrarSinc(); }, 60000);
-    let abaSalva = null; try { abaSalva = localStorage.getItem('mg-aba'); } catch (e) {}
-    if (abaSalva && abaSalva !== 'apont') trocarAba(abaSalva);
+    let abaSalva = null;
+    try { abaSalva = new URLSearchParams(location.search).get('aba'); } catch (e) {}
+    if (!abaSalva) try { abaSalva = localStorage.getItem('mg-aba'); } catch (e) {}
+    trocarAba(abaSalva || 'apont');
     await carregar();
   }
 
