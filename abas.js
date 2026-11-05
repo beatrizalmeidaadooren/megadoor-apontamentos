@@ -405,8 +405,9 @@ window.MGAbas = (function () {
     const pesoC = 1 / nItens;
     const linha = (ok, txt) => `<div style="font-size:12.5px;margin-top:4px;color:${ok ? 'var(--good)' : 'var(--bad)'}">${ok ? '✔' : '✘'} ${txt}</div>`;
     let h = `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Meta ${Math.round(LZ_META * 100)}% até ${dBR(LZ_FIM)} · faltam ${nf(R)} limpezas</div>`;
+    h += `<div style="font-size:12.5px;margin-top:4px">Máximo que ainda pode alcançar (fazendo todas completas): <strong>${pctBR((credito + R) / N)}</strong></div>`;
     if (folga < 0) {
-      h += linha(false, `Mesmo fazendo todas as próximas completas, termina em <strong>${pctBR((credito + R) / N)}</strong>: já não dá para bater ${Math.round(LZ_META * 100)}%.`);
+      h += linha(false, `Mesmo fazendo todas as próximas completas, já não dá para bater ${Math.round(LZ_META * 100)}%.`);
       return h;
     }
     const podeFaltar = Math.min(R, Math.floor(folga + 1e-9));
