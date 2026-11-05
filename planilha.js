@@ -93,7 +93,7 @@ window.MGPlanilha = (function () {
         linhas.push([l.nreg, serialDataHora(l.data_hora), serialDia(dia), dd, m, y, fracHora(p ? p.fim : l.hora), fracHora(p ? p.inicio : l.hora_anterior),
           tcp, l.idturno, tk.nominal, tc == null ? null : (tc - tk.nominal) * fr, tk.takt, tc == null ? null : (tc - tk.takt) * fr,
           tc == null ? null : (tc - tk.takt) / tk.nominal * fr, cc.programada || null, cc.grupo || null, cc.seis_perdas || null, cc.subgrupo || null,
-          l.oee_operador, v('conjunto'), v('item'), v('problema'), v('solucao'), l.observacao,
+          l.oee_operador, ...['conjunto', 'item', 'problema', 'solucao'].map(k => (p && p[k]) || v(k)), l.observacao,
           p ? (p.parte === 1 ? l.qnt : 0) : l.qnt, l.qntdefeito != null ? (p && p.parte !== 1 ? 0 : l.qntdefeito) : (l.qnt == null ? null : 0),
           p ? (p.obs || null) : (a.obs || null), meus || null, p ? `${p.parte}/${partes.length}` : null]);
       }

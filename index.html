@@ -76,6 +76,8 @@ td.num{font-family:var(--mono);font-size:12.5px;text-align:right}
 td.txt{white-space:normal;min-width:110px;max-width:240px}
 td.mine{background:color-mix(in srgb,var(--info-bg) 45%,transparent)}
 td.eu,td.eu input{background:var(--eu-bg);color:var(--eu);font-weight:600}
+input.ajp{width:150px;font:inherit;padding:3px 5px;border:1px dashed var(--line,#ccc);border-radius:4px;background:transparent;color:inherit}
+input.ajp::placeholder{color:var(--muted);opacity:.8}td.precisa input.ajp{border:1.5px dashed var(--warn);background:var(--warn-bg)}td.precisa input.ajp::placeholder{color:var(--warn);font-weight:600;opacity:1}
 input.aj{width:150px;font:inherit;padding:3px 5px;border:1px solid var(--line,#ccc);border-radius:4px;background:transparent;color:inherit}
 td.precisa input.aj{border:1.5px dashed var(--warn);background:var(--warn-bg)}
 td.precisa input.aj::placeholder{color:var(--warn);font-weight:600;opacity:1}
@@ -264,10 +266,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-05a"></script>
-<script src="planilha.js?v=2026-11-05a"></script>
-<script src="filtros.js?v=2026-11-05a"></script>
-<script src="abas.js?v=2026-11-05a"></script>
+<script src="comum.js?v=2026-11-05b"></script>
+<script src="planilha.js?v=2026-11-05b"></script>
+<script src="filtros.js?v=2026-11-05b"></script>
+<script src="abas.js?v=2026-11-05b"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -401,13 +403,18 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   const AJ_CAMPOS = ['conjunto', 'item', 'problema', 'solucao'];
   // Quais campos precisam ser preenchidos: definido por subgrupo (ou pela programada) na aba Menus.
   const PRECISA_COL = ['precisa_conjunto', 'precisa_item', 'precisa_problema', 'precisa_solucao'];
-  function camposPrecisa(l) {
-    const cs = (partesDe(l) || [S.classif[l.nreg]]).filter(c => c && c.programada);
-    const sgs = cs.map(c => { const chave = c.subgrupo && c.subgrupo !== '-' ? c.subgrupo : c.programada; return subDe(chave) || subDe(legado(chave)); }).filter(Boolean);
-    return AJ_CAMPOS.filter((k, i) => sgs.some(sg => sg[PRECISA_COL[i]]));
+  function precisaDe(c) {   // campos exigidos pela classificação c (de um apontamento ou de uma parte)
+    if (!c || !c.programada) return [];
+    const chave = c.subgrupo && c.subgrupo !== '-' ? c.subgrupo : c.programada;
+    const sg = subDe(chave) || subDe(legado(chave)); if (!sg) return [];
+    return AJ_CAMPOS.filter((k, i) => sg[PRECISA_COL[i]]);
   }
+  // apontamento dividido: quem precisa de conjunto/item/problema/solução é cada parte (a linha principal não é marcada)
+  function camposPrecisa(l) { return partesDe(l) ? [] : precisaDe(S.classif[l.nreg]); }
+  const vlParte = (l, p, k) => (p[k] != null && String(p[k]).trim() !== '') ? p[k] : vl(l, k);   // vazio na parte = vale o do apontamento
   const faltaCampo = (l, k) => camposPrecisa(l).includes(k) && !String(vl(l, k) || '').trim();
-  const faltaAlgum = l => camposPrecisa(l).some(k => faltaCampo(l, k));
+  const faltaParte = (l, p, k) => precisaDe(p).includes(k) && !String(vlParte(l, p, k) || '').trim();
+  const faltaAlgum = l => { const ps = partesDe(l); return ps ? ps.some(p => AJ_CAMPOS.some(k => faltaParte(l, p, k))) : camposPrecisa(l).some(k => faltaCampo(l, k)); };
   const ajDe = l => (S.aj && S.aj[l.nreg]) || null;
   const vl = (l, k) => { const a = ajDe(l); return a && a[k] != null ? a[k] : l[k]; };
   const ehMeu = (l, k) => { const a = ajDe(l); return !!(a && a[k] != null); };
@@ -438,7 +445,8 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       if (m === 'falta' && (c && c.programada)) return false;
       if (m === 'campos' && !faltaAlgum(l)) return false;
       if (b) {
-        const txt = norm([l.nreg, l.oee_operador, vl(l, 'conjunto'), vl(l, 'problema'), vl(l, 'solucao'), l.observacao, vl(l, 'item'), (ajDe(l) || {}).obs, c && c.programada, c && c.subgrupo].join(' '));
+        const txtPartes = (partesDe(l) || []).map(p => [p.programada, p.subgrupo, p.obs, ...AJ_CAMPOS.map(k => p[k])].join(' ')).join(' ');
+        const txt = norm([l.nreg, l.oee_operador, vl(l, 'conjunto'), vl(l, 'problema'), vl(l, 'solucao'), l.observacao, vl(l, 'item'), (ajDe(l) || {}).obs, c && c.programada, c && c.subgrupo, txtPartes].join(' '));
         if (!txt.includes(b)) return false;
       }
       return true;
@@ -466,7 +474,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     {chave: 'sol', valor: l => vl(l, 'solucao')}, {chave: 'obs', valor: l => l.observacao}, {chave: 'minhaobs', valor: l => (ajDe(l) || {}).obs}]});
 
   // Setas do teclado: andar entre Programada e Subgrupo como numa planilha (passa de página nas bordas)
-  const GA = MGTeclado.grade($('tabela'), {seletor: 'select.prog, select.sub, button.div-res, input.aj', chaveLinha: tr => tr.dataset.n,
+  const GA = MGTeclado.grade($('tabela'), {seletor: 'select.prog, select.sub, button.div-res, input.aj, input.ajp', chaveLinha: tr => tr.dataset.n || (tr.dataset.pai + ':' + tr.dataset.parte),
     aoBorda: (dir, col) => {
       const tot = Math.ceil(FA.aplicar(filtradas()).length / 100);
       if (dir === 'baixo' && S.pagina < tot - 1) { S.pagina++; renderApont(); GA.focarPrimeira(col); return true; }
@@ -531,10 +539,19 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         const perd = tc - tkl.nominal, tot = ps.reduce((a, p) => a + p.segundos, 0) || tc;
         ps.forEach((p, i) => {
           const fr = p.segundos / tot;
-          h += `<tr class="parte" data-pai="${l.nreg}"><td class="pn">↳ ${i + 1}/${ps.length}</td><td></td><td></td><td class="num">${esc(p.inicio || '')}</td><td class="num">${esc(p.fim || '')}</td>
+          const celP = k => {   // conjunto/item/problema/solução da parte (vazio = vale o do apontamento, mostrado em cinza)
+            const proprio = p[k] != null ? p[k] : '', herd = vl(l, k) || '', falta = faltaParte(l, p, k);
+            const dica = falta ? 'Precisa preencher (pela classificação desta parte)' : proprio ? 'Preenchido por você nesta parte' : herd ? 'Igual ao do apontamento (digite para mudar só nesta parte)' : '';
+            if (!S.dona) return `<td class="txt${proprio ? ' eu' : ''}" title="${esc(dica)}">${esc(proprio || herd)}</td>`;
+            return `<td class="${[proprio ? 'eu' : '', falta ? 'precisa' : ''].join(' ').trim()}"><input class="ajp" data-k="${k}" value="${esc(proprio)}" placeholder="${esc(falta ? 'preencher' : herd)}" title="${esc(dica)}"></td>`;
+          };
+          h += `<tr class="parte" data-pai="${l.nreg}" data-parte="${p.parte}"><td class="pn">↳ ${i + 1}/${ps.length}</td>
+            <td class="num muted">${esc((l.data_hora || '').slice(0, 10))} ${esc(p.fim || '')}</td><td class="muted">${esc(TURNO[l.idturno] || l.idturno || '')}</td><td class="num">${esc(p.inicio || '')}</td><td class="num">${esc(p.fim || '')}</td>
             <td class="num">${nf(p.segundos)}</td><td class="num">${nf(Math.round(perd * fr))}</td><td class="num">${fora == null ? '' : nf(Math.round(fora * fr))}</td><td class="num">${fora == null ? '' : n1(fora * fr / tkl.nominal)}</td>
             <td class="mine">${esc(p.programada || '')}</td><td class="mine">${esc(p.grupo && p.grupo !== '-' ? p.grupo : '')}</td><td class="mine">${esc(p.seis_perdas && p.seis_perdas !== '-' ? p.seis_perdas : '')}</td><td class="mine">${esc(p.subgrupo && p.subgrupo !== '-' ? p.subgrupo : '')}</td>
-            <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="mine txt">${esc(p.obs || '')}</td></tr>`;
+            <td class="muted">${esc(operTexto(l.oee_operador))}</td><td><span class="pill ${sit}" style="opacity:.6">${ROT_OP[sit]}</span></td>
+            ${AJ_CAMPOS.map(celP).join('')}<td class="txt muted">${esc(l.observacao || '')}</td>
+            <td class="mine${S.dona ? '' : ' txt'}">${S.dona ? `<input class="ajp" data-k="obs" value="${esc(p.obs || '')}" style="width:200px" placeholder="observação desta parte">` : esc(p.obs || '')}</td></tr>`;
         });
       }
     }
@@ -631,7 +648,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
   // Menus de Conjunto › Item › Problema › Solução (dependentes, como os da classificação); continua aceitando texto livre.
   const NIVEIS = ['conjunto', 'item', 'problema', 'solucao'];
   const NOME_NIVEL = {conjunto: 'Conjunto', item: 'Item', problema: 'Problema', solucao: 'Solução'};
-  const caminhoDe = (tr, k) => NIVEIS.slice(0, NIVEIS.indexOf(k)).map(n => { const i = tr.querySelector(`input.aj[data-k="${n}"]`); return i ? i.value.replace(/\s+/g, ' ').trim() : ''; });
+  const caminhoDe = (tr, k) => NIVEIS.slice(0, NIVEIS.indexOf(k)).map(n => { const i = tr.querySelector(`input.aj[data-k="${n}"], input.ajp[data-k="${n}"]`); return i ? (i.value || i.placeholder !== 'preencher' && i.placeholder || '').replace(/\s+/g, ' ').trim() : ''; });
   // Opções = as cadastradas no menu (na ordem do menu) + as que já foram usadas nas OS e nos apontamentos.
   function opcoesCatalogo(el) {
     const k = el.dataset.k, n = NIVEIS.indexOf(k), tr = el.closest('tr'), cam = caminhoDe(tr, k);
@@ -647,7 +664,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     // sem nada para o que está acima: mostra todos deste nível
     return {itens: juntar((S.cat || []).filter(c => c.nivel === k).map(c => c.nome), (S.usados || []).map(u => u[n])), dependente: false, cam};
   }
-  MGSugere.anexar($('tabela'), 'input.aj[data-k="conjunto"], input.aj[data-k="item"], input.aj[data-k="problema"], input.aj[data-k="solucao"]', {
+  MGSugere.anexar($('tabela'), ['conjunto', 'item', 'problema', 'solucao'].map(k => `input.aj[data-k="${k}"], input.ajp[data-k="${k}"]`).join(', '), {
     fonte: el => ({itens: opcoesCatalogo(el).itens, podeAdicionar: S.dona}),
     titulo: el => { const o = opcoesCatalogo(el), k = el.dataset.k; return k === 'conjunto' ? 'Conjuntos do menu' : o.dependente ? `${NOME_NIVEL[k]} de: ${o.cam.join(' › ')}` : `${NOME_NIVEL[k]} (todos; ainda sem menu para ${o.cam.filter(Boolean).join(' › ') || 'o campo anterior vazio'})`; },
     adicionar: async (el, nome) => {
@@ -660,10 +677,33 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     }
   });
   $('tabela').addEventListener('change', e => {
+    if (S.dona && e.target.classList.contains('ajp')) { salvarParteCampo(e.target); return; }
     const tr = e.target.closest('tr[data-n]'); if (!tr || !S.dona) return;
     if (e.target.classList.contains('prog') || e.target.classList.contains('sub')) salvarLinha(tr);
     if (e.target.classList.contains('aj')) salvarAjuste(tr, e.target);
   });
+  // Grava conjunto/item/problema/solução/observação de uma parte de um apontamento dividido.
+  async function salvarParteCampo(inp) {
+    const tr = inp.closest('tr.parte'); if (!tr) return;
+    const nreg = Number(tr.dataset.pai), parte = Number(tr.dataset.parte), k = inp.dataset.k;
+    const p = (S.div[nreg] || []).find(x => x.parte === parte); if (!p) return;
+    const v = inp.value.replace(/\s+/g, ' ').trim() || null;
+    if ((p[k] || null) === v) return;
+    tr.classList.add('salvando');
+    const {error} = await sb.from('divisoes').update({[k]: v, atualizado_em: new Date().toISOString()}).eq('nreg', nreg).eq('parte', parte);
+    tr.classList.remove('salvando');
+    if (error) { $('msg').textContent = 'Erro ao salvar a parte: ' + error.message; return; }
+    p[k] = v; aviso('Salvo');
+    if (k !== 'obs') {
+      const l = S.linhas.find(x => x.nreg === nreg);
+      if (l) {
+        const td = inp.closest('td'), falta = faltaParte(l, p, k);
+        td.classList.toggle('eu', !!v); td.classList.toggle('precisa', falta);
+        inp.placeholder = falta ? 'preencher' : (vl(l, k) || '');
+      }
+      if (S.usados) S.usados.push(AJ_CAMPOS.map(c => String(p[c] || '').trim()));
+    }
+  }
   // Grava o seu ajuste num campo do operador (ou a sua observação). Campo vazio = volta a valer o que o operador escreveu.
   async function salvarAjuste(tr, inp) {
     const nreg = Number(tr.dataset.n), k = inp.dataset.k;
@@ -720,7 +760,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const ed = S.dona;
     const atuais = partesDe(l);
     const c0 = S.classif[l.nreg] || {};
-    let P = atuais ? atuais.map(p => ({seg: p.segundos, programada: p.programada || '', sub: p.subgrupo && p.subgrupo !== '-' ? p.subgrupo : '', obs: p.obs || ''}))
+    let P = atuais ? atuais.map(p => ({seg: p.segundos, programada: p.programada || '', sub: p.subgrupo && p.subgrupo !== '-' ? p.subgrupo : '', obs: p.obs || '', campos: {conjunto: p.conjunto || null, item: p.item || null, problema: p.problema || null, solucao: p.solucao || null}}))
       : [{seg: Math.floor(tc / 2), programada: c0.programada || '', sub: c0.subgrupo && c0.subgrupo !== '-' ? c0.subgrupo : '', obs: ''}, {seg: tc - Math.floor(tc / 2), programada: '', sub: '', obs: ''}];
     const somaAtual = P.reduce((a, p) => a + p.seg, 0);
     if (somaAtual !== tc) P[P.length - 1].seg = Math.max(1, P[P.length - 1].seg + tc - somaAtual);   // o tempo do coletor mudou: ajusta a última parte
@@ -846,7 +886,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
         b.disabled = true; erro('');
         const quem = S.sess.user.email, quando = new Date().toISOString();
         let t = ini;
-        const regs = P.map((p, i) => { const a = t; t += p.seg; return {nreg: l.nreg, parte: i + 1, inicio: hmsDe(a), fim: hmsDe(t), segundos: p.seg, ...cls[i], obs: p.obs || null, atualizado_em: quando, atualizado_por: quem}; });
+        const regs = P.map((p, i) => { const a = t; t += p.seg; return {nreg: l.nreg, parte: i + 1, inicio: hmsDe(a), fim: hmsDe(t), segundos: p.seg, ...cls[i], obs: p.obs || null, conjunto: null, item: null, problema: null, solucao: null, ...(p.campos || {}), atualizado_em: quando, atualizado_por: quem}; });
         let r = await sb.from('divisoes').delete().eq('nreg', l.nreg);
         if (!r.error) r = await sb.from('divisoes').insert(regs);
         if (r.error) { erro('Erro ao salvar: ' + r.error.message); b.disabled = false; return; }
