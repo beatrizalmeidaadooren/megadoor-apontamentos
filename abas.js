@@ -384,7 +384,7 @@ window.MGAbas = (function () {
     const foco = GL && GL.lembrar();
     const hoje = hojeISO();
     const kp = ['A', 'B', 'C'].map(t => {
-      const xs = L.linhas.filter(r => r.turno === t && r.data < hoje).map(r => MGPlanilha.totalLimpeza(r.itens));
+      const xs = L.linhas.filter(r => r.turno === t && r.data < hoje).map(r => MGPlanilha.totalLimpeza(r.itens)).filter(x => x != null);   // linha sem nada preenchido ainda não conta
       const p = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
       return `<div class="kpi"><span>Turno ${t} · média até ontem</span><b>${p == null ? '—' : (p * 100).toFixed(1).replace('.', ',') + '%'}</b></div>`;
     });
@@ -405,7 +405,7 @@ window.MGAbas = (function () {
         <td><input type="time" class="li-ini" value="${esc((r.inicio || '').slice(0, 5))}" ${ed ? '' : 'disabled'}></td>
         <td><input type="time" class="li-fim" value="${esc((r.fim || '').slice(0, 5))}" ${ed ? '' : 'disabled'}></td>
         ${Array.from({ length: n }, (_, i) => { const o = ITEM[its[i] || ''] || ITEM['']; return `<td class="ci"><button type="button" class="it ${o.cls}" data-i="${i}" title="${n - 1 === i ? 'Item C' : 'Item ' + (i + 1)}: ${o.nome}" ${ed ? '' : 'disabled'}>${o.rot}</button></td>`; }).join('')}
-        <td class="num"><b>${Math.round(tot * 100)}%</b></td>
+        <td class="num">${tot == null ? '<span class="muted" title="Ainda não preenchida: não entra na média">—</span>' : `<b>${Math.round(tot * 100)}%</b>`}</td>
         <td><input class="li-pend" value="${esc(r.pendencias || '')}" ${ed ? '' : 'disabled'} style="width:160px"></td>
         <td><input class="li-obs" value="${esc(r.observacoes || '')}" ${ed ? '' : 'disabled'} style="width:220px"></td>
         ${ed ? '<td><button type="button" class="btn small li-tudo" title="Marca como feita (V verde) todos os itens que se aplicam a este turno">Tudo feito</button></td>' : ''}</tr>`;

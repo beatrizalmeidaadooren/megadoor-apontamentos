@@ -240,7 +240,9 @@ window.MGTeclado = (function () {
 window.MGZoom = (function () {
   const css = document.createElement('style');
   css.textContent = `.zoombar{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin:0 0 6px;font-size:12.5px;color:var(--muted)}
-    .zoombar .btn{padding:3px 9px;font-size:12.5px}.zoombar b{min-width:44px;text-align:center;font:600 12px var(--mono);color:var(--ink)}`;
+    .zoombar .btn{padding:3px 9px;font-size:12.5px}
+    table thead th[draggable=true]{cursor:grab}table thead th.arr-origem{opacity:.45}
+    table thead th.arr-antes{box-shadow:inset 3px 0 0 var(--accent)}table thead th.arr-depois{box-shadow:inset -3px 0 0 var(--accent)}.zoombar b{min-width:44px;text-align:center;font:600 12px var(--mono);color:var(--ink)}`;
   document.head.appendChild(css);
   const ler = k => { try { const v = parseFloat(localStorage.getItem('mg-zoom-' + k)); return v > 0 ? v : null; } catch (e) { return null; } };
   const gravar = (k, v) => { try { localStorage.setItem('mg-zoom-' + k, String(v)); } catch (e) {} };
@@ -307,7 +309,7 @@ window.MGZoom = (function () {
       if (tinha && foco.isConnected && document.activeElement !== foco) foco.focus({ preventScroll: true });
     }
     function aoRedesenhar() {
-      tab.querySelectorAll('thead th').forEach((th, i) => th.dataset.pos = i + 1);
+      tab.querySelectorAll('thead th').forEach((th, i) => { th.dataset.pos = i + 1; th.draggable = true; th.title = th.title || 'Arraste para mudar a coluna de lugar'; });
       padrao = nomesAtuais();
       if (ordemSalva) reordenar(juntar(ordemSalva, padrao));
     }
@@ -326,7 +328,7 @@ window.MGZoom = (function () {
           <button class="btn small" type="button" data-m="-1" data-c="${q(n)}" title="Mover para a esquerda" ${i ? '' : 'disabled'}>↑</button>
           <button class="btn small" type="button" data-m="1" data-c="${q(n)}" title="Mover para a direita" ${i < a.length - 1 ? '' : 'disabled'}>↓</button></div>`).join('');
       const desenhar = () => { pop.querySelector('.flista').innerHTML = lista(); };
-      pop.innerHTML = '<b>Colunas</b><div class="muted" style="font-size:12px;margin:2px 0 4px">Marque as que aparecem. ↑ ↓ mudam a ordem (↑ = mais para a esquerda).</div><div class="flista" style="margin-top:6px;max-height:360px;overflow:auto"></div>' +
+      pop.innerHTML = '<b>Colunas</b><div class="muted" style="font-size:12px;margin:2px 0 4px">Marque as que aparecem. ↑ ↓ mudam a ordem (↑ = mais para a esquerda). Também dá para arrastar o título da coluna na tabela.</div><div class="flista" style="margin-top:6px;max-height:360px;overflow:auto"></div>' +
         '<div class="facoes"><button class="btn small" type="button" data-a="todas">Mostrar todas</button><button class="btn small" type="button" data-a="padrao">Ordem padrão</button><button class="btn small primary" type="button" data-a="ok">Fechar</button></div>';
       desenhar();
       pop.addEventListener('change', e => { const n = e.target.dataset.c; if (n == null) return; e.target.checked ? ocultas.delete(n) : ocultas.add(n); salvarCol(); aplicarColunas(); });
@@ -356,6 +358,31 @@ window.MGZoom = (function () {
     function salvarCol() { try { localStorage.setItem('mg-colunas-' + tabelaId, JSON.stringify([...ocultas])); } catch (e) {} }
     aplicar(z);
     // "Caber na largura" continua valendo quando a tabela é redesenhada ou a janela muda de tamanho
+    // ---- arrastar o cabeçalho para mudar a coluna de lugar ----
+    let arrastando = null;
+    const limparMarca = () => tab.querySelectorAll('thead th.arr-antes, thead th.arr-depois').forEach(t => t.classList.remove('arr-antes', 'arr-depois'));
+    const ladoDe = (th, e) => { const r = th.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? 'antes' : 'depois'; };
+    tab.addEventListener('dragstart', e => {
+      const th = e.target.closest && e.target.closest('thead th'); if (!th) return;
+      arrastando = nomeTh(th); th.classList.add('arr-origem');
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', arrastando); } catch (_) {}
+    });
+    tab.addEventListener('dragover', e => {
+      const th = arrastando && e.target.closest && e.target.closest('thead th'); if (!th) return;
+      e.preventDefault(); limparMarca();
+      if (nomeTh(th) !== arrastando) th.classList.add('arr-' + ladoDe(th, e));
+    });
+    tab.addEventListener('drop', e => {
+      const th = arrastando && e.target.closest && e.target.closest('thead th'); if (!th) return;
+      e.preventDefault();
+      const alvo = nomeTh(th), lado = ladoDe(th, e), ord = nomesAtuais();
+      limparMarca();
+      if (alvo === arrastando) return;
+      ord.splice(ord.indexOf(arrastando), 1);
+      ord.splice(ord.indexOf(alvo) + (lado === 'depois' ? 1 : 0), 0, arrastando);
+      ordemSalva = ord; salvarOrdem(); reordenar(ord); aplicarColunas();
+    });
+    tab.addEventListener('dragend', () => { arrastando = null; limparMarca(); tab.querySelectorAll('thead th.arr-origem').forEach(t => t.classList.remove('arr-origem')); });
     new MutationObserver(() => { aoRedesenhar(); aplicarColunas(); }).observe(tab, { childList: true });
     aoRedesenhar(); aplicarColunas();
     window.addEventListener('resize', () => { if (ajusteAuto[tabelaId]) caber(); });

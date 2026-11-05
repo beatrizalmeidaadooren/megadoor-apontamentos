@@ -650,8 +650,8 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-11-04a"></script>
-<script src="planilha.js?v=2026-11-04a"></script>
+<script src="comum.js?v=2026-11-05a"></script>
+<script src="planilha.js?v=2026-11-05a"></script>
 <script>
 (function () {
   "use strict";
@@ -1385,6 +1385,9 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       });
       // Situação do dia/turno: sem nenhum V = falta; V em azul = justificada; V em vermelho =
       // justificada por erro de planejamento; senão, feita (verde, mais forte quanto mais completa).
+      // Linha ainda não preenchida (nenhum V e nenhum F): não conta — nem como feita, nem como falta.
+      var temF = itemCols.some(function (ci) { return typeof row[ci] === "string" && normalizeSimple(row[ci]) === "F"; });
+      if (checked === 0 && !temF) continue;
       var situacao = checked === 0 ? "falta" : (nAzul * 2 >= checked ? "justificada" : (nVerm * 2 >= checked ? "erro" : "feita"));
       // TOTAL da própria planilha (fração 0–1, já inclui a coluna "C") — é com ele que o
       // % do topo da aba Limpeza é calculado, então usamos o mesmo número pra bater.

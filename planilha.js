@@ -27,7 +27,9 @@ window.MGPlanilha = (function () {
   // ---- regras ----
   // Itens da limpeza: V feita (verde), J justificada (V azul), P erro de planejamento (V vermelho),
   // F faltou (F vermelho), '' ainda não preenchido (F), '-' não se aplica (laranja, vazio).
+  // null = linha ainda não preenchida (nenhum V/J/P/F): não conta nas médias
   function totalLimpeza(itens) {
+    if (!(itens || []).some(x => x === 'V' || x === 'J' || x === 'P' || x === 'F')) return null;
     const ap = (itens || []).filter(x => x !== '-');
     if (!ap.length) return 0;
     return ap.filter(x => x === 'V' || x === 'J' || x === 'P').length / ap.length;
@@ -109,7 +111,7 @@ window.MGPlanilha = (function () {
     const numeros = Array.from({ length: nItens - 1 }, (_, i) => i + 1);  // 1..37 + coluna C
     const hoje = hojeISO();
     const media = t => {
-      const xs = regs.filter(r => r.turno === t && r.data < hoje).map(r => totalLimpeza(r.itens));
+      const xs = regs.filter(r => r.turno === t && r.data < hoje).map(r => totalLimpeza(r.itens)).filter(x => x != null);
       return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
     };
     const aoa = [];
@@ -125,7 +127,7 @@ window.MGPlanilha = (function () {
       const linha = [n, serialDia(r.data), r.turno, fracHora(r.inicio), fracHora(r.fim)];
       for (let i = 0; i < nItens; i++) {
         const x = (r.itens || [])[i];
-        linha.push(x === 'V' || x === 'J' || x === 'P' ? 'V' : x === '-' ? null : 'F');
+        linha.push(x === 'V' || x === 'J' || x === 'P' ? 'V' : x === 'F' ? 'F' : null);   // vazio = ainda não preenchido
       }
       linha.push(totalLimpeza(r.itens), r.pendencias || null, r.observacoes || null);
       aoa.push(linha);
