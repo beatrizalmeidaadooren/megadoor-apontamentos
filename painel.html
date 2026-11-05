@@ -650,8 +650,8 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-11-05j"></script>
-<script src="planilha.js?v=2026-11-05j"></script>
+<script src="comum.js?v=2026-11-05k"></script>
+<script src="planilha.js?v=2026-11-05k"></script>
 <script>
 (function () {
   "use strict";
@@ -1369,7 +1369,7 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       if (G > 120 && G > R + 50 && G > B + 30) return "verde";
       return "plain";
     }
-    var records = [];
+    var records = [], pendentes = [];   // pendentes = linhas criadas mas ainda sem nenhum V/F (não contam ainda, mas ainda vão acontecer)
     for (var r = hIdx + 1; r < rows.length; r++) {
       var row = rows[r];
       if (!row) continue;
@@ -1387,14 +1387,14 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       // justificada por erro de planejamento; senão, feita (verde, mais forte quanto mais completa).
       // Linha ainda não preenchida (nenhum V e nenhum F): não conta — nem como feita, nem como falta.
       var temF = itemCols.some(function (ci) { return typeof row[ci] === "string" && normalizeSimple(row[ci]) === "F"; });
-      if (checked === 0 && !temF) continue;
+      if (checked === 0 && !temF) { pendentes.push({ data: data, turno: turno }); continue; }
       var situacao = checked === 0 ? "falta" : (nAzul * 2 >= checked ? "justificada" : (nVerm * 2 >= checked ? "erro" : "feita"));
       // TOTAL da própria planilha (fração 0–1, já inclui a coluna "C") — é com ele que o
       // % do topo da aba Limpeza é calculado, então usamos o mesmo número pra bater.
       var totalCell = (colTotal !== -1 && typeof row[colTotal] === "number" && isFinite(row[colTotal])) ? row[colTotal] : null;
       records.push({ data: data, turno: turno, checked: checked, total: itemCols.length, totalCell: totalCell, situacao: situacao });
     }
-    return { records: records, itemCount: itemCols.length, sheetName: sheetName };
+    return { records: records, pendentes: pendentes, itemCount: itemCols.length, sheetName: sheetName };
   }
 
   // Progresso de limpeza por turno, dentro da janela fixa do programa TPM (01/09/2026 a
@@ -1412,7 +1412,17 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       var todosRecs = (limpezaResult.records || []).filter(function (r) {
         return r.turno === t && r.data.getTime() >= prog.start.getTime() && r.data.getTime() <= prog.end.getTime();
       });
-      var totalSlots = todosRecs.length;
+      // Limpezas que ainda vão acontecer = linhas ainda não preenchidas + seg a sáb dos meses que ainda não foram
+      // criados, até o fim do programa (a mesma conta da aba Limpeza do site).
+      var pend = (limpezaResult.pendentes || []).filter(function (r) {
+        return r.turno === t && r.data.getTime() >= prog.start.getTime() && r.data.getTime() <= prog.end.getTime();
+      });
+      var ultima = null;
+      todosRecs.concat(pend).forEach(function (r) { if (!ultima || r.data > ultima) ultima = r.data; });
+      var futuras = 0;
+      var d = ultima ? new Date(ultima.getFullYear(), ultima.getMonth(), ultima.getDate() + 1) : new Date(prog.start.getTime());
+      for (; d.getTime() <= prog.end.getTime(); d.setDate(d.getDate() + 1)) if (d.getDay() !== 0) futuras++;
+      var totalSlots = todosRecs.length + pend.length + futuras;
       // "Já devido" = dias ANTES de hoje (o turno de hoje ainda pode ser feito) — é o mesmo
       // corte do % do topo da aba Limpeza da planilha (TODAY()), então os números batem.
       var elapsedRecs = todosRecs.filter(function (r) { return r.data < today; });
