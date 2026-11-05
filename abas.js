@@ -380,13 +380,52 @@ window.MGAbas = (function () {
 
   let GL = null;
   const TECLA_ITEM = { v: 'V', j: 'J', p: 'P', f: 'F', '-': '-', delete: '', backspace: '' };
+  // ---- Quanto cada turno ainda pode faltar (meta do programa TPM: média de 90% de 01/09/2026 a 28/02/2027) ----
+  const LZ_META = 0.9, LZ_INI = '2026-09-01', LZ_FIM = '2027-02-28';
+  const pctBR = x => (x * 100).toFixed(1).replace('.', ',') + '%';
+  function limpezaPrevisao(t, hoje) {
+    const doTurno = L.linhas.filter(r => r.turno === t && r.data >= LZ_INI && r.data <= LZ_FIM);
+    // limpezas que ainda vão existir: as linhas já criadas + seg a sáb até o fim do programa (meses ainda não criados)
+    const ultima = doTurno.reduce((m, r) => r.data > m ? r.data : m, '');
+    let futuras = 0;
+    for (let d = new Date((ultima || LZ_INI) + 'T12:00:00'), fim = new Date(LZ_FIM + 'T12:00:00'); ; ) {
+      if (ultima) d.setDate(d.getDate() + 1);
+      if (d > fim) break;
+      if (d.getDay() !== 0) futuras++;
+      if (!ultima) d.setDate(d.getDate() + 1);
+    }
+    const contadas = doTurno.filter(r => r.data < hoje && MGPlanilha.totalLimpeza(r.itens) != null);
+    const credito = contadas.reduce((a, r) => a + MGPlanilha.totalLimpeza(r.itens), 0);
+    const N = doTurno.length + futuras, R = N - contadas.length;
+    if (!N) return '';
+    const folga = credito + R - LZ_META * N;          // em "limpezas inteiras" de sobra
+    // peso do item C (fechar as OS) numa limpeza: 1 ÷ itens que se aplicam (pega a última linha preenchida)
+    const ref = contadas.length ? contadas.reduce((m, r) => r.data > m.data ? r : m) : null;
+    const nItens = ref ? (ref.itens || []).filter(x => x !== '-').length || 38 : 38;
+    const pesoC = 1 / nItens;
+    const linha = (ok, txt) => `<div style="font-size:12.5px;margin-top:4px;color:${ok ? 'var(--good)' : 'var(--bad)'}">${ok ? '✔' : '✘'} ${txt}</div>`;
+    let h = `<div style="font-size:11.5px;color:var(--muted);margin-top:6px">Meta ${Math.round(LZ_META * 100)}% até ${dBR(LZ_FIM)} · faltam ${nf(R)} limpezas</div>`;
+    if (folga < 0) {
+      h += linha(false, `Mesmo fazendo todas as próximas completas, termina em <strong>${pctBR((credito + R) / N)}</strong>: já não dá para bater ${Math.round(LZ_META * 100)}%.`);
+      return h;
+    }
+    const podeFaltar = Math.min(R, Math.floor(folga + 1e-9));
+    h += linha(podeFaltar > 0, podeFaltar > 0 ? `Pode <strong>faltar mais ${nf(podeFaltar)}</strong> limpeza${podeFaltar > 1 ? 's' : ''} e ainda bate a meta.` : `Não pode faltar mais nenhuma limpeza.`);
+    const fimSemC = (credito + R * (1 - pesoC)) / N;
+    h += linha(fimSemC >= LZ_META - 1e-9, `Se não fechar as OS (item C) em nenhuma das próximas: termina em <strong>${pctBR(fimSemC)}</strong>${fimSemC >= LZ_META - 1e-9 ? ', ainda bate' : ', não bate'}.`);
+    const semC = Math.min(R, Math.floor(folga / pesoC + 1e-9));
+    if (fimSemC < LZ_META - 1e-9) h += linha(semC > 0, `Pode deixar de fechar as OS em até <strong>${nf(semC)}</strong> limpeza${semC === 1 ? '' : 's'}.`);
+    return h;
+  }
+
   function limpezaRender() {
     const foco = GL && GL.lembrar();
     const hoje = hojeISO();
     const kp = ['A', 'B', 'C'].map(t => {
       const xs = L.linhas.filter(r => r.turno === t && r.data < hoje).map(r => MGPlanilha.totalLimpeza(r.itens)).filter(x => x != null);   // linha sem nada preenchido ainda não conta
       const p = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
-      return `<div class="kpi"><span>Turno ${t} · média até ontem</span><b>${p == null ? '—' : (p * 100).toFixed(1).replace('.', ',') + '%'}</b></div>`;
+      const pr = limpezaPrevisao(t, hoje);
+      return `<div class="kpi" style="min-width:260px"><span>Turno ${t} · média até ontem</span><b>${p == null ? '—' : (p * 100).toFixed(1).replace('.', ',') + '%'}</b>${pr}</div>`;
     });
     $('lKpis').innerHTML = kp.join('');
     const mes = $('lMes').value, t = $('lTurno').value;
