@@ -229,7 +229,7 @@ tr.outros td{color:var(--warn);font-weight:600}
 <textarea id="clip" aria-hidden="true" tabindex="-1" style="position:fixed;left:-9999px;top:0;width:1px;height:1px"></textarea>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="comum.js?v=2026-11-05b"></script>
+<script src="comum.js?v=2026-11-05c"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -240,7 +240,7 @@ function limTxt(){return +S.limiar>0?'de '+(+S.limiar)+' s':'do takt'}
 function save(){try{localStorage.setItem('radar-apont-v4',JSON.stringify(S))}catch(e){}}
 
 let BASE=[],SRC={kind:'sample'},PERIOD=null,TAB='dia',PEND=null,R=null,COPY='',STATUS='all';
-let DESC=new Map(),DONA=false;   // paradas desconsideradas à mão (ex.: produção fora do horário) · nreg -> motivo
+let DESC=new Map(),DONA=false;   // ajustes à mão por parada · nreg -> {tipo:'desconsiderar'|'nao_preenchido', motivo}
 
 const WD=['dom','seg','ter','qua','qui','sex','sáb'];
 const MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -370,7 +370,7 @@ async function handleFile(file){
 }
 
 /* ---------- cálculo ---------- */
-const stLbl=p=>p.f?'Preenchido':p.ta?'Deixado para o turno seguinte':'Não preenchido';
+const stLbl=p=>p.inv?'Não preenchido (avaliado por você)':p.f?'Preenchido':p.ta?'Deixado para o turno seguinte':'Não preenchido';
 const isTA=o=>norm(o).startsWith('turno anterior');
 function isInfo(p){const ob=norm((p.x&&p.x.ob)||'');return !norm(p.o).startsWith('outro')||/[a-z0-9]{3}/.test(ob)}
 function compute(){
@@ -395,7 +395,9 @@ function compute(){
     if(r.s>maxS){longo++;continue}
     const ta=r.o!==''&&isTA(r.o)?1:0;
     const reg={n:r.n,day,mes:day.slice(0,7),t:r.t,s:r.s,h:r.h,o:r.o,x:r.x,ta,f:r.o!==''&&!ta?1:0};
-    if(r.n!=null&&DESC.has(r.n)){reg.motivo=DESC.get(r.n);D.push(reg);continue}   // desconsiderada à mão: fora de todos os cálculos
+    const aj=r.n!=null?DESC.get(r.n):null;
+    if(aj&&aj.tipo!=='nao_preenchido'){reg.motivo=aj.motivo;D.push(reg);continue}   // desconsiderada à mão: fora de todos os cálculos
+    if(aj&&aj.tipo==='nao_preenchido'){reg.inv=1;reg.motivo=aj.motivo;reg.f=0;reg.ta=0}   // apontamento só para não levar falta: conta como não preenchido
     P.push(reg);
   }
   const turnos=[...new Set(P.map(p=>p.t))].sort((a,b)=>(+a-+b)||a.localeCompare(b));
@@ -429,6 +431,7 @@ function render(){
     if(R.reiN)m+=' · '+nf(R.reiN)+' reinícios do coletor ignorados';
     if(R.longo)m+=' · '+nf(R.longo)+' paradas acima do máximo (ignoradas)';
     if(R.D.length)m+=' · '+nf(R.D.length)+' paradas desconsideradas por você';
+    {const ni=R.P.filter(p=>p.inv).length;if(ni)m+=' · '+nf(ni)+' apontamentos considerados não preenchidos por você';}
     status(m)}
   const fb=iso=>iso?dLabel(iso)+'/'+iso.slice(0,4):'';
   $('#ini').min=$('#fim').min=R.minD||'';$('#ini').max=$('#fim').max=R.maxD||'';
@@ -534,8 +537,8 @@ function renderTab(){
     const val=(p,k)=>k==='o'?p.o:((p.x&&p.x[k])||'');
     const cols=X.filter(([k])=>k==='o'||list.some(p=>val(p,k)!==''));
     const max=500;
-    const acao=p=>!DONA||!p.n?'':STATUS==='desc'?`<button class="dsbtn volta" type="button" data-volta="${esc(p.n)}" title="Voltar a contar esta parada no Radar">Voltar a considerar</button>`:`<button class="dsbtn" type="button" data-desc="${esc(p.n)}" title="Tirar esta parada do Radar (não conta no %)">Desconsiderar</button>`;
-    const rows=list.slice(0,max).map(p=>`<tr><td><span class="pill ${STATUS==='desc'?'ds':p.f?'ok':p.ta?'ta':'no'}">${STATUS==='desc'?'Desconsiderada':stLbl(p)}</span>${STATUS==='desc'&&p.motivo?`<div style="font-size:11.5px;color:var(--muted);max-width:180px;white-space:normal">${esc(p.motivo)}</div>`:''}</td><td class="num">${dLabel(p.day)} <span style="color:var(--muted)">${wd(p.day)}</span></td><td>${esc(tLabel(p.t))}</td><td class="num">${fmtHora((p.h-p.s+86400)%86400)}</td><td class="num">${fmtHora(p.h)}</td><td class="num">${fmtDur(p.s)}</td>${cols.map(([k])=>{const v=val(p,k);return `<td class="txt">${v?esc(v):'<span style="color:var(--muted)">—</span>'}</td>`}).join('')}<td class="num" style="color:var(--muted)">${esc(p.n||'—')}</td>${DONA?`<td>${acao(p)}</td>`:''}</tr>`).join('');
+    const acao=p=>!DONA||!p.n?'':STATUS==='desc'?`<button class="dsbtn volta" type="button" data-volta="${esc(p.n)}" title="Voltar a contar esta parada no Radar">Voltar a considerar</button>`:p.inv?`<button class="dsbtn volta" type="button" data-volta="${esc(p.n)}" title="Voltar a valer o que o operador apontou">Desfazer</button>`:`${(p.f||p.ta)?`<button class="dsbtn" type="button" data-inval="${esc(p.n)}" title="O apontamento não diz o que aconteceu (preenchido só para não levar falta): passa a contar como não preenchido">Considerar não preenchido</button> `:''}<button class="dsbtn" type="button" data-desc="${esc(p.n)}" title="Tirar esta parada do Radar (não conta no %)">Desconsiderar</button>`;
+    const rows=list.slice(0,max).map(p=>`<tr><td><span class="pill ${STATUS==='desc'?'ds':p.f?'ok':p.ta?'ta':'no'}">${STATUS==='desc'?'Desconsiderada':stLbl(p)}</span>${(STATUS==='desc'||p.inv)&&p.motivo?`<div style="font-size:11.5px;color:var(--muted);max-width:180px;white-space:normal">${esc(p.motivo)}</div>`:''}</td><td class="num">${dLabel(p.day)} <span style="color:var(--muted)">${wd(p.day)}</span></td><td>${esc(tLabel(p.t))}</td><td class="num">${fmtHora((p.h-p.s+86400)%86400)}</td><td class="num">${fmtHora(p.h)}</td><td class="num">${fmtDur(p.s)}</td>${cols.map(([k])=>{const v=val(p,k);return `<td class="txt">${v?esc(v):'<span style="color:var(--muted)">—</span>'}</td>`}).join('')}<td class="num" style="color:var(--muted)">${esc(p.n||'—')}</td>${DONA?`<td>${acao(p)}</td>`:''}</tr>`).join('');
     body.innerHTML=list.length?`<div class="scroll"><table class="list"><thead><tr><th>Situação</th><th>Dia</th><th>Turno</th><th>Início (horaanterior)</th><th>Fim (hora)</th><th>Duração</th>${cols.map(([,l])=>`<th>${l}</th>`).join('')}<th>nreg</th>${DONA?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table></div>${list.length>max?`<p class="hint">Mostrando as ${max} mais recentes. O botão Copiar leva todas as ${nf(list.length)}.</p>`:''}`:`<p class="hint">${STATUS==='nao'?'Todas as paradas deste filtro têm apontamento.':STATUS==='sim'?'Nenhuma parada deste filtro foi apontada.':'Nenhuma parada neste filtro.'}</p>`;
     COPY=[['Situação','Dia','Turno','horaanterior','hora','Segundos',...cols.map(([,l])=>l),'nreg'],...list.map(p=>[stLbl(p),dLabel(p.day)+'/'+p.day.slice(0,4),tLabel(p.t),fmtHora((p.h-p.s+86400)%86400),fmtHora(p.h),p.s,...cols.map(([k])=>String(val(p,k)).replace(/[\t\r\n]+/g,' ')),p.n||''])].map(r=>r.join('\t')).join('\n');
   }else{
@@ -557,7 +560,7 @@ document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{TAB
 $('#period').addEventListener('click',e=>{const b=e.target.closest('[data-period]');if(!b)return;PERIOD=b.dataset.period;PEND=null;renderPeriod();renderKpis();renderRank();renderTab()});
 document.addEventListener('click',e=>{
   if(e.target.id==='clearPend'){PEND=null;renderTab();return}
-  const dsb=e.target.closest('[data-desc],[data-volta],#dsTodas,#dsVoltarTodas');if(dsb){acaoDesc(dsb);return}
+  const dsb=e.target.closest('[data-desc],[data-volta],[data-inval],#dsTodas,#dsVoltarTodas');if(dsb){acaoDesc(dsb);return}
   const st=e.target.closest('[data-status]');if(st){STATUS=st.dataset.status;renderTab();return}
   const b=e.target.closest('.cellbtn');if(!b)return;
   PEND={col:b.dataset.col,v:b.dataset.v,t:b.dataset.t||null};
@@ -589,7 +592,8 @@ $('#btnSample').addEventListener('click',()=>{BASE=sample();SRC={kind:'sample'};
 async function acaoDesc(b){
   if(!DONA)return;
   const volta=b.hasAttribute('data-volta')||b.id==='dsVoltarTodas';
-  const ns=b.id==='dsTodas'||b.id==='dsVoltarTodas'?(R._lista||[]).map(p=>p.n).filter(Boolean):[b.dataset.desc||b.dataset.volta];
+  const inval=b.hasAttribute('data-inval');
+  const ns=b.id==='dsTodas'||b.id==='dsVoltarTodas'?(R._lista||[]).map(p=>p.n).filter(Boolean):[b.dataset.desc||b.dataset.volta||b.dataset.inval];
   if(!ns.length)return;
   const sb=MG.sb;b.disabled=true;
   try{
@@ -597,14 +601,22 @@ async function acaoDesc(b){
       if(ns.length>1&&!confirm('Voltar a considerar '+nf(ns.length)+' paradas no Radar?')){b.disabled=false;return}
       for(let i=0;i<ns.length;i+=200){const{error}=await sb.from('radar_desconsiderados').delete().in('nreg',ns.slice(i,i+200).map(Number));if(error)throw error}
       ns.forEach(n=>DESC.delete(n));
-      $('#toast').textContent=nf(ns.length)+(ns.length>1?' paradas voltaram':' parada voltou')+' a contar no Radar.';
+      $('#toast').textContent=nf(ns.length)+(ns.length>1?' paradas voltaram':' parada voltou')+' ao normal no Radar.';
+    }else if(inval){
+      const motivo=prompt('Este apontamento vai contar como NÃO preenchido (o operador preencheu só para não levar falta).\nMotivo (opcional):','Apontamento sem informação real');
+      if(motivo===null){b.disabled=false;return}
+      const sess=await MG.sessao(),quem=sess&&sess.user?sess.user.email:null;
+      const{error}=await sb.from('radar_desconsiderados').upsert({nreg:Number(ns[0]),tipo:'nao_preenchido',motivo:motivo.trim()||null,atualizado_em:new Date().toISOString(),atualizado_por:quem},{onConflict:'nreg'});
+      if(error)throw error;
+      DESC.set(ns[0],{tipo:'nao_preenchido',motivo:motivo.trim()});
+      $('#toast').textContent='Parada marcada como não preenchida. Use "Desfazer" na mesma linha para voltar.';
     }else{
       const motivo=prompt((ns.length>1?'Desconsiderar '+nf(ns.length)+' paradas no Radar.':'Desconsiderar esta parada no Radar.')+'\nMotivo (opcional):','Produção fora do horário');
       if(motivo===null){b.disabled=false;return}
       const sess=await MG.sessao(),quem=sess&&sess.user?sess.user.email:null,quando=new Date().toISOString();
-      const regs=ns.map(n=>({nreg:Number(n),motivo:motivo.trim()||null,atualizado_em:quando,atualizado_por:quem}));
+      const regs=ns.map(n=>({nreg:Number(n),tipo:'desconsiderar',motivo:motivo.trim()||null,atualizado_em:quando,atualizado_por:quem}));
       for(let i=0;i<regs.length;i+=500){const{error}=await sb.from('radar_desconsiderados').upsert(regs.slice(i,i+500),{onConflict:'nreg'});if(error)throw error}
-      ns.forEach(n=>DESC.set(n,motivo.trim()||''));
+      ns.forEach(n=>DESC.set(n,{tipo:'desconsiderar',motivo:motivo.trim()||''}));
       $('#toast').textContent=nf(ns.length)+(ns.length>1?' paradas desconsideradas':' parada desconsiderada')+'. Veja em "Desconsideradas" para desfazer.';
     }
     const t=$('#toast').textContent;run();$('#toast').textContent=t;
@@ -619,7 +631,7 @@ async function carregarDoSistema(){
     const sess=await MG.sessao();
     if(!sess){status('Faça login na página inicial do sistema para ver o Radar.',true);return}
     DONA=MG.ehDona(sess);
-    try{DESC=new Map((await MG.buscarTudo('radar_desconsiderados','nreg,motivo')).map(d=>[String(d.nreg),d.motivo||'']))}catch(e){DESC=new Map()}
+    try{DESC=new Map((await MG.buscarTudo('radar_desconsiderados','nreg,motivo,tipo')).map(d=>[String(d.nreg),{motivo:d.motivo||'',tipo:d.tipo||'desconsiderar'}]))}catch(e){DESC=new Map()}
     const rows=await MG.buscarTudo('coletor','nreg,dia,hora,hora_anterior,idturno,menuid,anulado,oee_operador,conjunto,problema,solucao,observacao,item',null,'nreg',(a,t)=>status('Carregando '+nf(a)+' de '+nf(t)+' registros…'));
     const M={c:'conjunto',p:'problema',so:'solucao',ob:'observacao',it:'item'};
     const out=[];let skip=0,prevH=null;
