@@ -96,6 +96,9 @@ tr.parte td.pn{color:var(--muted);text-align:right}
 .dv-jan .dv-erro{color:var(--bad);font-weight:600;min-height:18px;margin-top:6px}
 .dv-barra{height:14px;display:flex;border-radius:4px;overflow:hidden;margin-top:8px;border:1px solid var(--line)}
 .dv-barra span{display:block;height:100%;border-right:2px solid var(--surface)}
+#mTabela tbody tr:nth-child(even) td{background-color:color-mix(in srgb,var(--line) 55%,var(--surface))}
+#mTabela tbody tr:hover td{background-color:color-mix(in srgb,var(--info-bg) 70%,var(--surface))}
+#mTabela tbody tr:focus-within td{background-color:var(--info-bg);box-shadow:inset 0 1px 0 var(--accent),inset 0 -1px 0 var(--accent)}
 .legenda-eu{display:inline-block;background:var(--eu-bg);color:var(--eu);font-weight:600;border-radius:4px;padding:1px 6px}
 td select{max-width:210px}
 tr.salvando td{opacity:.6}
@@ -266,10 +269,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-05h"></script>
-<script src="planilha.js?v=2026-11-05h"></script>
-<script src="filtros.js?v=2026-11-05h"></script>
-<script src="abas.js?v=2026-11-05h"></script>
+<script src="comum.js?v=2026-11-05j"></script>
+<script src="planilha.js?v=2026-11-05j"></script>
+<script src="filtros.js?v=2026-11-05j"></script>
+<script src="abas.js?v=2026-11-05j"></script>
 <script>
 (function () {
   const sb = MG.sb;

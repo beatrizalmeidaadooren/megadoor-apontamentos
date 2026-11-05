@@ -131,7 +131,7 @@ window.MGAbas = (function () {
     const cab = `<thead><tr>${th('maq', '.MÁQUINA', 'mine')}${th('nreg', 'NReg')}${th('data', 'Data')}${th('turno', 'Turno')}${th('hant', 'Hora ant')}${th('hora', 'Hora')}${th('tempo', 'Tempo')}${th('id', 'ID')}${th('desc', 'Descrição')}${th('obs', 'Obs')}</tr></thead>`;
     let hh = cab + '<tbody>';
     for (const l of pag) {
-      hh += `<tr data-n="${l.nreg}"><td class="mine"><input class="maq" list="mMaqLista" value="${esc(l.maquina || '')}" ${ed} style="width:120px"></td>
+      hh += `<tr data-n="${l.nreg}"><td class="mine"><input class="maq" autocomplete="off" value="${esc(l.maquina || '')}" ${ed} style="width:120px"></td>
         <td class="num">${l.nreg}</td><td class="num">${dBR(l.data)}</td><td>${esc(l.turno || '')}</td><td class="num">${esc(l.hora_ant || '')}</td><td class="num">${esc(l.hora || '')}</td>
         <td class="num">${dur(l.tempo_s)}</td><td class="num">${l.cod_id == null ? '' : l.cod_id}</td><td class="txt">${esc(l.descricao || '')}</td><td class="txt">${esc(l.obs || '')}</td></tr>`;
     }
@@ -325,6 +325,16 @@ window.MGAbas = (function () {
     FM.ligar($('mTabela'), () => montagemFiltradas());
     MGZoom.anexar('mTabela');
     const POR = 100;
+    // .MÁQUINA com a mesma lista dos apontamentos: digite "M" e Enter = MEGADOOR (e já desce para a linha de baixo)
+    MGSugere.anexar($('mTabela'), 'input.maq', {
+      fonte: () => {
+        const vistos = new Set(MAQ_SUGESTOES.map(norm)), outras = [];
+        M.linhas.forEach(l => { const v = txt(l.maquina); if (v && !vistos.has(norm(v))) { vistos.add(norm(v)); outras.push(v); } });
+        return { itens: MAQ_SUGESTOES.concat(outras.sort((a, b) => a.localeCompare(b, 'pt'))), podeAdicionar: false };
+      },
+      titulo: () => '.MÁQUINA',
+      depois: el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    });
     GM = MGTeclado.grade($('mTabela'), { seletor: 'input.maq', chaveLinha: tr => tr.dataset.n,
       aoBorda: (dir, col) => {
         const tot = Math.ceil(FM.aplicar(montagemFiltradas()).length / POR);

@@ -602,6 +602,7 @@ window.MGSugere = (function () {
     } else { const o = lista[i]; fechar(); if (!o) return; el.value = o.nome; }
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.focus({ preventScroll: true });
+    if (c && c.depois) try { c.depois(el); } catch (e) {}
   }
   function anexar(container, seletor, opcoes) {
     if (!container) return;
