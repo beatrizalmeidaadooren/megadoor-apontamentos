@@ -73,7 +73,7 @@ th{position:sticky;top:0;z-index:2;font:500 10.5px/1.2 var(--mono);text-transfor
 th.mine{background:var(--info-bg);color:var(--info)}
 td{padding:6px 10px;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap;vertical-align:middle}
 td.num{font-family:var(--mono);font-size:12.5px;text-align:right}
-td.txt{white-space:normal;min-width:110px;max-width:240px}
+td.txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:110px;max-width:240px;cursor:default}
 td.mine{background:color-mix(in srgb,var(--info-bg) 45%,transparent)}
 td.eu,td.eu input{background:var(--eu-bg);color:var(--eu);font-weight:600}
 input.ajp{width:150px;font:inherit;padding:3px 5px;border:1px dashed var(--line,#ccc);border-radius:4px;background:transparent;color:inherit}
@@ -266,10 +266,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-05c"></script>
-<script src="planilha.js?v=2026-11-05c"></script>
-<script src="filtros.js?v=2026-11-05c"></script>
-<script src="abas.js?v=2026-11-05c"></script>
+<script src="comum.js?v=2026-11-05e"></script>
+<script src="planilha.js?v=2026-11-05e"></script>
+<script src="filtros.js?v=2026-11-05e"></script>
+<script src="abas.js?v=2026-11-05e"></script>
 <script>
 (function () {
   const sb = MG.sb;

@@ -235,14 +235,121 @@ window.MGTeclado = (function () {
   return { grade };
 })();
 
+// Ordem das colunas de TODAS as tabelas: arraste o título de uma coluna para outro lugar (com o mouse).
+// A ordem fica guardada neste navegador, por tabela, e volta a valer quando a tabela é redesenhada.
+window.MGColunas = (function () {
+  const css = document.createElement('style');
+  css.textContent = `table thead th.mg-arrastavel{cursor:grab}
+    table thead th.arr-origem{opacity:.4}
+    table thead th.arr-antes{box-shadow:inset 3px 0 0 var(--accent,#1D5E8A)}table thead th.arr-depois{box-shadow:inset -3px 0 0 var(--accent,#1D5E8A)}
+    .mg-fantasma{position:fixed;z-index:200;pointer-events:none;background:var(--accent,#1D5E8A);color:#fff;font:600 12px/1.2 system-ui,sans-serif;padding:5px 9px;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);white-space:nowrap}
+    body.mg-arrastando, body.mg-arrastando *{cursor:grabbing!important;user-select:none!important}`;
+  document.head.appendChild(css);
+  const nomeTh0 = th => th.childNodes[0] ? String(th.childNodes[0].textContent).trim() : th.textContent.trim();
+  const nomeTh = th => nomeTh0(th) || ('(coluna ' + (th.dataset.pos || '') + ')');
+  const ths = t => t.tHead ? [...t.tHead.rows[t.tHead.rows.length - 1].cells] : [];
+  // identidade de cada coluna: o nome do título (com número quando dois títulos são iguais), guardado no próprio th
+  const idTh = th => th.dataset.mgId || nomeTh(th);
+  const nomes = t => ths(t).map(idTh);
+  function chave(t) {
+    if (t.dataset.mgChave) return t.dataset.mgChave;
+    if (t.id) return t.id;
+    const dono = t.parentElement && t.parentElement.closest('[id]');
+    const irmas = dono ? [...dono.querySelectorAll('table')] : [];
+    return (dono ? dono.id : 'pagina') + ':' + (t.className || 'tabela') + ':' + Math.max(0, irmas.filter(x => x.className === t.className).indexOf(t));
+  }
+  const ler = k => { try { return JSON.parse(localStorage.getItem('mg-ordem-' + k) || 'null'); } catch (e) { return null; } };
+  const gravar = (k, v) => { try { v ? localStorage.setItem('mg-ordem-' + k, JSON.stringify(v)) : localStorage.removeItem('mg-ordem-' + k); } catch (e) {} };
+  function juntar(salva, base) {          // a ordem salva + colunas novas no lugar de origem
+    const r = salva.filter(n => base.includes(n));
+    base.forEach((n, i) => { if (r.includes(n)) return; const ant = base.slice(0, i).reverse().find(x => r.includes(x)); r.splice(ant ? r.indexOf(ant) + 1 : 0, 0, n); });
+    return r;
+  }
+  function reordenar(t, alvo) {
+    const atual = nomes(t), n = atual.length;
+    const perm = alvo.map(x => atual.indexOf(x));
+    if (perm.length !== n || perm.some(i => i < 0) || new Set(perm).size !== n || perm.every((p, i) => p === i)) return false;
+    const foco = document.activeElement, tinha = t.contains(foco);
+    t.querySelectorAll('tr').forEach(tr => {
+      const cel = [...tr.children]; if (cel.length !== n) return;   // linhas com colspan (avisos) ficam como estão
+      perm.forEach(i => tr.appendChild(cel[i]));
+    });
+    if (tinha && foco.isConnected && document.activeElement !== foco) try { foco.focus({ preventScroll: true }); } catch (e) {}
+    return true;
+  }
+  function depois(t) { if (typeof t._mgAposOrdem === 'function') try { t._mgAposOrdem(); } catch (e) {} }
+  // tabela nova ou redesenhada: guarda a ordem original e aplica a ordem salva
+  function preparar(t) {
+    const th = t.tHead; if (!th || th.dataset.mgOrd || t.closest('.fpop, .mg-esc, .dv-jan, #lMenu')) return;
+    const cs = ths(t); if (cs.length < 2) return;
+    th.dataset.mgOrd = '1';
+    const vistos = {};
+    cs.forEach((c, i) => { c.dataset.pos = i + 1; const n = nomeTh(c); vistos[n] = (vistos[n] || 0) + 1; c.dataset.mgId = vistos[n] > 1 ? n + ' (' + vistos[n] + ')' : n; c.classList.add('mg-arrastavel'); if (!c.title) c.title = 'Arraste para mudar a coluna de lugar'; });
+    t._mgPadrao = nomes(t);
+    const s = ler(chave(t));
+    if (s && reordenar(t, juntar(s, t._mgPadrao))) depois(t);
+  }
+  let agendado = false;
+  function varrer() { agendado = false; document.querySelectorAll('table').forEach(preparar); }
+  function agendar() { if (!agendado) { agendado = true; Promise.resolve().then(varrer); } }
+  new MutationObserver(agendar).observe(document.documentElement, { childList: true, subtree: true });
+  agendar();
+  // ---- arrastar com o mouse (não usa o "arrastar e soltar" do navegador, que falha em tabelas) ----
+  let A = null;
+  const limparMarca = () => document.querySelectorAll('th.arr-antes, th.arr-depois').forEach(x => x.classList.remove('arr-antes', 'arr-depois'));
+  document.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const th = e.target.closest && e.target.closest('thead th.mg-arrastavel'); if (!th) return;
+    if (e.target.closest('input, select, a, textarea, label')) return;   // o botão ▾ do filtro também serve para arrastar (clique simples continua abrindo o filtro)
+    const t = th.closest('table'); if (!t) return;
+    A = { t, th, x: e.clientX, y: e.clientY, ativo: false, alvo: null, lado: null };
+  });
+  document.addEventListener('mousemove', e => {
+    if (!A) return;
+    if (!A.ativo) {
+      if (Math.abs(e.clientX - A.x) + Math.abs(e.clientY - A.y) < 6) return;
+      A.ativo = true; A.th.classList.add('arr-origem'); document.body.classList.add('mg-arrastando');
+      A.g = document.createElement('div'); A.g.className = 'mg-fantasma'; A.g.textContent = '⇄ ' + nomeTh(A.th); document.body.appendChild(A.g);
+      const sel = window.getSelection && window.getSelection(); if (sel) sel.removeAllRanges();
+    }
+    e.preventDefault();
+    A.g.style.left = (e.clientX + 12) + 'px'; A.g.style.top = (e.clientY + 10) + 'px';
+    limparMarca(); A.alvo = null;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const th = el && el.closest && el.closest('thead th');
+    if (th && th.closest('table') === A.t && th !== A.th) {
+      const r = th.getBoundingClientRect();
+      A.lado = e.clientX < r.left + r.width / 2 ? 'antes' : 'depois';
+      A.alvo = th; th.classList.add('arr-' + A.lado);
+    }
+    // perto das bordas da caixa com rolagem lateral: rola junto
+    const caixa = A.t.closest('.scroll'); if (caixa) { const r = caixa.getBoundingClientRect(); if (e.clientX > r.right - 40) caixa.scrollLeft += 18; else if (e.clientX < r.left + 40) caixa.scrollLeft -= 18; }
+  });
+  document.addEventListener('mouseup', () => {
+    if (!A) return;
+    const a = A; A = null;
+    if (!a.ativo) return;
+    a.th.classList.remove('arr-origem'); document.body.classList.remove('mg-arrastando'); if (a.g) a.g.remove(); limparMarca();
+    // o clique que vem logo depois de soltar não deve abrir filtro/ordenar
+    const engole = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    document.addEventListener('click', engole, { capture: true, once: true }); setTimeout(() => document.removeEventListener('click', engole, true), 50);
+    if (!a.alvo) return;
+    const ord = nomes(a.t), de = idTh(a.th), para = idTh(a.alvo);
+    ord.splice(ord.indexOf(de), 1);
+    ord.splice(ord.indexOf(para) + (a.lado === 'depois' ? 1 : 0), 0, de);
+    definir(a.t, ord);
+  });
+  function definir(t, ord) { gravar(chave(t), ord); reordenar(t, ord); depois(t); }
+  function padrao(t) { gravar(chave(t), null); if (t._mgPadrao) reordenar(t, t._mgPadrao); depois(t); }
+  return { nomes, nomeTh: idTh, definir, padrao, chave, varrer };
+})();
+
 // Tamanho da tabela: diminuir/aumentar (zoom) e "Caber na largura", para ver todas as colunas sem arrastar para o lado.
 // O tamanho escolhido fica guardado neste navegador para cada tabela.
 window.MGZoom = (function () {
   const css = document.createElement('style');
   css.textContent = `.zoombar{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin:0 0 6px;font-size:12.5px;color:var(--muted)}
-    .zoombar .btn{padding:3px 9px;font-size:12.5px}
-    table thead th[draggable=true]{cursor:grab}table thead th.arr-origem{opacity:.45}
-    table thead th.arr-antes{box-shadow:inset 3px 0 0 var(--accent)}table thead th.arr-depois{box-shadow:inset -3px 0 0 var(--accent)}.zoombar b{min-width:44px;text-align:center;font:600 12px var(--mono);color:var(--ink)}`;
+    .zoombar .btn{padding:3px 9px;font-size:12.5px}.zoombar b{min-width:44px;text-align:center;font:600 12px var(--mono);color:var(--ink)}`;
   document.head.appendChild(css);
   const ler = k => { try { const v = parseFloat(localStorage.getItem('mg-zoom-' + k)); return v > 0 ? v : null; } catch (e) { return null; } };
   const gravar = (k, v) => { try { localStorage.setItem('mg-zoom-' + k, String(v)); } catch (e) {} };
@@ -286,33 +393,8 @@ window.MGZoom = (function () {
     const estilo = document.createElement('style'); document.head.appendChild(estilo);
     let ocultas;
     try { ocultas = new Set(JSON.parse(localStorage.getItem('mg-colunas-' + tabelaId) || '[]')); } catch (e) { ocultas = new Set(); }
-    const nomeTh0 = th => th.childNodes[0] ? String(th.childNodes[0].textContent).trim() : th.textContent.trim();
-    const nomeTh = th => nomeTh0(th) || ('(coluna ' + (th.dataset.pos || '') + ')');
-    // ---- ordem das colunas (lembrada por nome; "Ordem padrão" volta ao original) ----
-    let ordemSalva = null, padrao = [];
-    try { ordemSalva = JSON.parse(localStorage.getItem('mg-ordem-' + tabelaId) || 'null'); } catch (e) { ordemSalva = null; }
-    const nomesAtuais = () => [...tab.querySelectorAll('thead th')].map(nomeTh);
-    function juntar(salva, base) {          // a ordem salva + colunas novas no lugar de origem
-      const r = salva.filter(n => base.includes(n));
-      base.forEach((n, i) => { if (r.includes(n)) return; const ant = base.slice(0, i).reverse().find(x => r.includes(x)); r.splice(ant ? r.indexOf(ant) + 1 : 0, 0, n); });
-      return r;
-    }
-    function reordenar(alvo) {
-      const atual = nomesAtuais(); const n = atual.length;
-      const perm = alvo.map(x => atual.indexOf(x));
-      if (perm.length !== n || perm.some(i => i < 0) || perm.every((p, i) => p === i)) return;
-      const foco = document.activeElement, tinha = tab.contains(foco);
-      tab.querySelectorAll('tr').forEach(tr => {
-        const cel = [...tr.children]; if (cel.length !== n) return;
-        perm.forEach(i => tr.appendChild(cel[i]));
-      });
-      if (tinha && foco.isConnected && document.activeElement !== foco) foco.focus({ preventScroll: true });
-    }
-    function aoRedesenhar() {
-      tab.querySelectorAll('thead th').forEach((th, i) => { th.dataset.pos = i + 1; th.draggable = true; th.title = th.title || 'Arraste para mudar a coluna de lugar'; });
-      padrao = nomesAtuais();
-      if (ordemSalva) reordenar(juntar(ordemSalva, padrao));
-    }
+    const nomeTh = th => MGColunas.nomeTh(th);
+    const nomesAtuais = () => MGColunas.nomes(tab);
     function aplicarColunas() {
       const ths = [...tab.querySelectorAll('thead th')];
       estilo.textContent = ths.map((th, i) => ocultas.has(nomeTh(th)) ? `#${tabelaId} tr > :nth-child(${i + 1}){display:none}` : '').join('\n');
@@ -338,13 +420,13 @@ window.MGZoom = (function () {
           const ord = nomesAtuais(), i = ord.indexOf(m.dataset.c), j = i + Number(m.dataset.m);
           if (i < 0 || j < 0 || j >= ord.length) return;
           [ord[i], ord[j]] = [ord[j], ord[i]];
-          ordemSalva = ord; salvarOrdem(); reordenar(ord); aplicarColunas(); desenhar();
+          MGColunas.definir(tab, ord); desenhar();
           const b = pop.querySelector(`[data-m="${m.dataset.m}"][data-c="${CSS.escape(m.dataset.c)}"]`); if (b && !b.disabled) b.focus();
           return;
         }
         const a = e.target.dataset.a; if (!a) return;
         if (a === 'todas') { ocultas.clear(); salvarCol(); aplicarColunas(); pop.querySelectorAll('input').forEach(i => i.checked = true); }
-        if (a === 'padrao') { ordemSalva = null; salvarOrdem(); reordenar(padrao); aplicarColunas(); desenhar(); }
+        if (a === 'padrao') { MGColunas.padrao(tab); desenhar(); }
         if (a === 'ok') pop.remove();
       });
       document.body.appendChild(pop);
@@ -354,37 +436,12 @@ window.MGZoom = (function () {
       const fora = ev => { if (!pop.contains(ev.target) && ev.target !== btn) { pop.remove(); document.removeEventListener('mousedown', fora); } };
       setTimeout(() => document.addEventListener('mousedown', fora), 0);
     }
-    function salvarOrdem() { try { ordemSalva ? localStorage.setItem('mg-ordem-' + tabelaId, JSON.stringify(ordemSalva)) : localStorage.removeItem('mg-ordem-' + tabelaId); } catch (e) {} }
     function salvarCol() { try { localStorage.setItem('mg-colunas-' + tabelaId, JSON.stringify([...ocultas])); } catch (e) {} }
     aplicar(z);
     // "Caber na largura" continua valendo quando a tabela é redesenhada ou a janela muda de tamanho
-    // ---- arrastar o cabeçalho para mudar a coluna de lugar ----
-    let arrastando = null;
-    const limparMarca = () => tab.querySelectorAll('thead th.arr-antes, thead th.arr-depois').forEach(t => t.classList.remove('arr-antes', 'arr-depois'));
-    const ladoDe = (th, e) => { const r = th.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? 'antes' : 'depois'; };
-    tab.addEventListener('dragstart', e => {
-      const th = e.target.closest && e.target.closest('thead th'); if (!th) return;
-      arrastando = nomeTh(th); th.classList.add('arr-origem');
-      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', arrastando); } catch (_) {}
-    });
-    tab.addEventListener('dragover', e => {
-      const th = arrastando && e.target.closest && e.target.closest('thead th'); if (!th) return;
-      e.preventDefault(); limparMarca();
-      if (nomeTh(th) !== arrastando) th.classList.add('arr-' + ladoDe(th, e));
-    });
-    tab.addEventListener('drop', e => {
-      const th = arrastando && e.target.closest && e.target.closest('thead th'); if (!th) return;
-      e.preventDefault();
-      const alvo = nomeTh(th), lado = ladoDe(th, e), ord = nomesAtuais();
-      limparMarca();
-      if (alvo === arrastando) return;
-      ord.splice(ord.indexOf(arrastando), 1);
-      ord.splice(ord.indexOf(alvo) + (lado === 'depois' ? 1 : 0), 0, arrastando);
-      ordemSalva = ord; salvarOrdem(); reordenar(ord); aplicarColunas();
-    });
-    tab.addEventListener('dragend', () => { arrastando = null; limparMarca(); tab.querySelectorAll('thead th.arr-origem').forEach(t => t.classList.remove('arr-origem')); });
-    new MutationObserver(() => { aoRedesenhar(); aplicarColunas(); }).observe(tab, { childList: true });
-    aoRedesenhar(); aplicarColunas();
+    tab._mgAposOrdem = aplicarColunas;   // depois que a ordem muda, as colunas escondidas são recalculadas
+    new MutationObserver(() => { MGColunas.varrer(); aplicarColunas(); }).observe(tab, { childList: true });
+    MGColunas.varrer(); aplicarColunas();
     window.addEventListener('resize', () => { if (ajusteAuto[tabelaId]) caber(); });
   }
   return { anexar };
@@ -565,4 +622,81 @@ window.MGSugere = (function () {
   }
   window.addEventListener('resize', fechar);
   return { anexar, aberto, fechar };
+})();
+
+// Texto maior que a célula: ao CLICAR, abre uma caixa junto da célula com todo o conteúdo (editável se o campo for editável).
+// Ao sair da caixa (clicar fora, Tab, Enter ou Esc), ela fecha e a célula volta ao tamanho normal.
+// Pelo teclado (setas) nada abre, para não atrapalhar a navegação entre as células.
+window.MGExpande = (function () {
+  const css = document.createElement('style');
+  css.textContent = `.mg-exp{position:absolute;z-index:96;box-sizing:border-box;background:var(--surface,#fff);color:var(--ink,#111);border:2px solid var(--accent,#1D5E8A);border-radius:6px;box-shadow:0 10px 28px rgba(0,0,0,.25);font:inherit;font-size:13px;line-height:1.4;padding:6px 8px;white-space:pre-wrap;overflow:auto}
+    textarea.mg-exp{resize:vertical;outline:none}
+    .mg-exp-dica{position:absolute;z-index:97;font:11px system-ui,sans-serif;color:var(--muted,#666);background:var(--surface,#fff);padding:1px 6px;border-radius:4px}`;
+  document.head.appendChild(css);
+  let aberto = null;
+  const transborda = el => el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2;
+  function posicionar(caixa, ref) {
+    const r = ref.getBoundingClientRect();
+    const larg = Math.min(Math.max(r.width, 360), 560, window.innerWidth - 16);
+    caixa.style.width = larg + 'px';
+    caixa.style.left = Math.max(8, Math.min(window.innerWidth - larg - 8, r.left)) + window.scrollX + 'px';
+    caixa.style.top = (r.top + window.scrollY - 2) + 'px';
+  }
+  function fechar(confirmar) {
+    if (!aberto) return;
+    const { caixa, dica, el, original } = aberto; aberto = null;
+    caixa.remove(); if (dica) dica.remove();
+    if (el && caixa.tagName === 'TEXTAREA') {
+      if (!confirmar) el.value = original;
+      else if (el.value !== original) { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+  }
+  function abrirEditor(el) {
+    const ta = document.createElement('textarea');
+    ta.className = 'mg-exp'; ta.value = el.value; ta.spellcheck = false;
+    document.body.appendChild(ta); posicionar(ta, el);
+    const ajustar = () => { ta.style.height = 'auto'; ta.style.height = Math.min(320, Math.max(el.getBoundingClientRect().height + 4, ta.scrollHeight + 4)) + 'px'; };
+    ajustar();
+    const dica = document.createElement('div'); dica.className = 'mg-exp-dica';
+    dica.textContent = el.tagName === 'TEXTAREA' ? 'Esc cancela · clique fora para salvar' : 'Enter salva · Shift+Enter quebra linha · Esc cancela';
+    document.body.appendChild(dica);
+    const rr = ta.getBoundingClientRect(); dica.style.left = (rr.left + window.scrollX + 6) + 'px'; dica.style.top = (rr.bottom + window.scrollY + 2) + 'px';
+    aberto = { caixa: ta, dica, el, original: el.value };
+    ta.addEventListener('input', () => { el.value = el.tagName === 'TEXTAREA' ? ta.value : ta.value.replace(/\s*\n\s*/g, ' '); ajustar(); const r2 = ta.getBoundingClientRect(); dica.style.top = (r2.bottom + window.scrollY + 2) + 'px'; });
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); fechar(false); el.focus({ preventScroll: true }); }
+      else if ((e.key === 'Enter' && !e.shiftKey && el.tagName !== 'TEXTAREA') || e.key === 'Tab') { e.preventDefault(); fechar(true); el.focus({ preventScroll: true }); }
+      e.stopPropagation();
+    });
+    ta.addEventListener('blur', () => setTimeout(() => { if (aberto && aberto.caixa === ta) fechar(true); }, 0));
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+  function abrirLeitura(ref, texto) {
+    const d = document.createElement('div'); d.className = 'mg-exp'; d.tabIndex = -1; d.textContent = texto;
+    d.style.maxHeight = '320px';
+    document.body.appendChild(d); posicionar(d, ref);
+    aberto = { caixa: d };
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') fechar(false); });
+    d.focus({ preventScroll: true });
+    d.addEventListener('blur', () => setTimeout(() => { if (aberto && aberto.caixa === d) fechar(false); }, 0));
+  }
+  document.addEventListener('mousedown', e => { if (aberto && !aberto.caixa.contains(e.target)) fechar(true); }, true);
+  window.addEventListener('resize', () => fechar(true));
+  document.addEventListener('click', e => {
+    if (aberto || e.button !== 0) return;
+    const t = e.target; if (!t.closest || !t.closest('td') || t.closest('.mg-exp')) return;
+    const campo = t.closest('input, textarea');
+    if (campo) {
+      if (campo.tagName === 'INPUT' && !/^(text|search|)$/.test(campo.type)) return;
+      if (!transborda(campo)) return;
+      if (campo.disabled || campo.readOnly) { abrirLeitura(campo, campo.value); return; }
+      if (window.MGSugere) MGSugere.fechar();
+      abrirEditor(campo); return;
+    }
+    if (t.closest('button, select, a, label')) return;
+    const td = t.closest('td');
+    if (td.querySelector('input, select, textarea, button')) return;
+    if (transborda(td) && td.textContent.trim()) abrirLeitura(td, td.innerText.trim());
+  });
+  return { fechar };
 })();
