@@ -269,10 +269,10 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-05m"></script>
-<script src="planilha.js?v=2026-11-05m"></script>
-<script src="filtros.js?v=2026-11-05m"></script>
-<script src="abas.js?v=2026-11-05m"></script>
+<script src="comum.js?v=2026-11-05n"></script>
+<script src="planilha.js?v=2026-11-05n"></script>
+<script src="filtros.js?v=2026-11-05n"></script>
+<script src="abas.js?v=2026-11-05n"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -1015,11 +1015,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     else h += '<p class="muted" style="margin-top:6px">Clique numa linha (ou na barra) para ver os apontamentos dela e, se for o caso, considerá-los convergentes.</p>';
     h += '<div id="divDet"></div>';
     $('pareto').innerHTML = h;
-    if (S.divAberta && (S.divAberta === '__manuais' ? manuais.length : porPar[S.divAberta])) divDetalhe(S.divAberta); else S.divAberta = null;
+    if (S.divAberta && (S.divAberta === '__manuais' ? manuais.length : porPar[S.divAberta])) divDetalhe(S.divAberta, true); else S.divAberta = null;
   }
 
   // Lista dos apontamentos de uma divergência (ou dos que você considerou convergentes), com o botão para mudar.
-  function divDetalhe(k) {
+  function divDetalhe(k, manter) {
     S.divAberta = k;
     const man = k === '__manuais', ls = (man ? S.divManuais : S.divLista[k]) || [];
     const ed = S.dona;
@@ -1038,10 +1038,15 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     }
     h += '</tbody></table></div></div>';
     $('divDet').innerHTML = h;
-    $('divDet').scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    if (!manter) $('divDet').scrollIntoView({block: 'nearest', behavior: 'smooth'});
   }
-  async function divMarcar(ns, convergir) {
+  async function divMarcar(ns, convergir, botao) {
     const k = S.divAberta;
+    // guarda onde você estava: posição da lista na tela, rolagem dela e a linha clicada
+    const det0 = $('divDet'), topo0 = det0 ? det0.getBoundingClientRect().top : null;
+    const sc0 = det0 && det0.querySelector('.scroll'), rol0 = sc0 ? sc0.scrollTop : 0;
+    const linhas0 = det0 ? [...det0.querySelectorAll('tbody tr')] : [];
+    const idx = botao ? linhas0.indexOf(botao.closest('tr')) : -1;
     if (convergir) {
       const quem = S.sess.user.email, quando = new Date().toISOString();
       const regs = ns.map(n => ({nreg: n, par: k, atualizado_em: quando, atualizado_por: quem}));
@@ -1058,11 +1063,20 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
       aviso(ns.length > 1 ? `${nf(ns.length)} apontamentos voltaram a divergentes` : 'Voltou a divergente');
     }
     renderPareto();
+    const det = $('divDet');
+    if (det && det.firstChild && topo0 != null) {
+      window.scrollBy(0, det.getBoundingClientRect().top - topo0);   // a lista fica no mesmo lugar da tela
+      const sc = det.querySelector('.scroll'); if (sc) sc.scrollTop = rol0;
+      if (idx >= 0) {   // a linha que ficou no lugar da que saiu já fica pronta para o próximo clique
+        const trs = det.querySelectorAll('tbody tr'), alvo = trs[Math.min(idx, trs.length - 1)];
+        const bt = alvo && alvo.querySelector('[data-conv]'); if (bt) bt.focus({preventScroll: true});
+      }
+    }
   }
   $('pareto').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (b && b.dataset.fechardiv) { S.divAberta = null; $('divDet').innerHTML = ''; return; }
-    if (b && b.dataset.conv && S.dona) { divMarcar([Number(b.dataset.conv)], S.divAberta !== '__manuais'); return; }
+    if (b && b.dataset.conv && S.dona) { divMarcar([Number(b.dataset.conv)], S.divAberta !== '__manuais', b); return; }
     if (b && b.dataset.convtodas && S.dona) {
       const man = S.divAberta === '__manuais', ls = (man ? S.divManuais : S.divLista[S.divAberta]) || [];
       if (!confirm(man ? `Voltar ${nf(ls.length)} apontamentos a divergentes?` : `Considerar convergentes os ${nf(ls.length)} apontamentos desta divergência?`)) return;
