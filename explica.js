@@ -142,7 +142,7 @@
       '.mgx-i.inl{position:static;display:inline-block;vertical-align:middle;margin-left:6px}' +
       '.mgx-alvo{position:relative}.mgx-clic{cursor:help}.mgx-alvo>span:first-child,.mgx-alvo>.k,.mgx-alvo>.hl-label{padding-right:18px}' +
       '.mgx-fundo{position:fixed;inset:0;background:rgba(10,14,18,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}' +
-      '.mgx-caixa{background:var(--surface,var(--card,#fff));color:var(--ink,var(--text,#10161a));border-radius:12px;max-width:560px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.3);padding:18px 22px;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}' +
+      '.mgx-caixa{background:var(--surface,var(--card,#fff));color:var(--ink,var(--text,#10161a));border-radius:12px;max-width:560px;width:100%;max-height:85vh;overflow:auto;overscroll-behavior:contain;box-shadow:0 12px 40px rgba(0,0,0,.3);padding:18px 22px;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}' +
       '.mgx-caixa h3{margin:0 28px 2px 0;font-size:17px}.mgx-val{font-size:26px;font-weight:700;margin:4px 0 6px}' +
       '.mgx-caixa h4{margin:12px 0 2px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;opacity:.65}.mgx-caixa p{margin:0}' +
       '.mgx-x{position:sticky;float:right;top:0;border:0;background:transparent;font-size:18px;cursor:pointer;color:inherit;opacity:.6}' +
@@ -224,4 +224,71 @@
   if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
 
   window.MGExplica = { abrir: abrir, achar: achar, varrer: varrer, dicionario: D, H: H };
+
+  /* ---------------------------------------------------------------- MGJanela
+     Toda janela por cima da página (explicação ⓘ, registros de uma barra, gráfico
+     ampliado, editor, divisão de apontamento) precisa: (1) caber na parte da tela que a
+     pessoa está vendo — o Painel e a Análise Megadoor ficam dentro de iframes, às vezes do
+     tamanho do conteúdo inteiro, então "centralizar" jogava a janela para longe e deixava
+     maior que a tela; (2) rolar sozinha, sem levar a página de trás junto. */
+  var FUNDOS = '.mgx-fundo, .drill-modal-backdrop.show, .dv-fundo:not([hidden])';
+  var CAIXAS = '.mgx-caixa, .drill-modal, .dv-jan';
+  // parte visível desta janela na tela de verdade (subindo por todos os iframes), em coordenadas desta janela
+  function regiao() {
+    var lo = 0, hi = window.innerHeight, acc = 0, w = window;
+    try {
+      while (w !== w.top && w.frameElement) {
+        var fe = w.frameElement, r = fe.getBoundingClientRect();
+        acc += r.top + (fe.clientTop || 0);
+        w = w.parent;
+        lo = Math.max(lo, -acc); hi = Math.min(hi, w.innerHeight - acc);
+      }
+    } catch (e) { /* outra origem: fica com a própria janela */ }
+    if (hi - lo < 160) { lo = Math.max(0, lo); hi = lo + Math.max(160, Math.min(window.innerHeight, 600)); }
+    return { top: lo, height: hi - lo };
+  }
+  function janelas() { var ws = [window], w = window; try { while (w !== w.top && w.frameElement) { w = w.parent; ws.push(w); } } catch (e) {} return ws; }
+  var travado = false;
+  function travar(sim) {
+    if (sim === travado) return; travado = sim;
+    janelas().forEach(function (w) {
+      try {
+        var de = w.document.documentElement, n = +(de.dataset.mgTrava || 0) + (sim ? 1 : -1);
+        if (sim && n === 1) { de.dataset.mgOverflow = de.style.overflow || ''; de.style.overflow = 'hidden'; w.document.body.style.overscrollBehavior = 'none'; }
+        if (!sim && n <= 0) { de.style.overflow = de.dataset.mgOverflow || ''; delete de.dataset.mgOverflow; w.document.body.style.overscrollBehavior = ''; n = 0; }
+        de.dataset.mgTrava = String(n);
+      } catch (e) {}
+    });
+  }
+  function encaixarJanelas() {
+    var fundos = Array.prototype.filter.call(document.querySelectorAll(FUNDOS), function (f) { return f.offsetParent !== null || getComputedStyle(f).display !== 'none'; });
+    travar(fundos.length > 0);
+    if (!fundos.length) return;
+    var rg = regiao();
+    fundos.forEach(function (f) {
+      if (!f.classList.contains('dv-fundo')) { f.style.top = rg.top + 'px'; f.style.height = rg.height + 'px'; f.style.bottom = 'auto'; f.style.left = '0'; f.style.right = '0'; f.style.overscrollBehavior = 'contain'; }
+      var cx = f.matches('.dv-fundo') ? document.querySelector('.dv-jan') : f.querySelector(CAIXAS);
+      if (!cx) return;
+      var folga = f.classList.contains('dv-fundo') ? 90 : 40;
+      cx.style.maxHeight = Math.max(140, rg.height - folga) + 'px';
+      if (f.classList.contains('dv-fundo')) cx.style.top = (rg.top + 50) + 'px';
+    });
+  }
+  (function () {
+    var st = document.createElement('style');
+    st.textContent = '.mgx-caixa,.drill-modal-body,.dv-jan,.drill-modal>div{overscroll-behavior:contain}.mgx-caixa{max-height:none}';
+    (document.head || document.documentElement).appendChild(st);
+    var pend2 = false;
+    var ag = function () { if (pend2) return; pend2 = true; requestAnimationFrame(function () { pend2 = false; encaixarJanelas(); }); };
+    var ok = function () {
+      new MutationObserver(ag).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+      janelas().forEach(function (w) { try { w.addEventListener('resize', ag); } catch (e) {} });
+      // a janela de trás ainda pode rolar antes da trava (ex.: rolagem já em andamento): reencaixa
+      janelas().slice(1).forEach(function (w) { try { w.addEventListener('scroll', ag, { passive: true }); } catch (e) {} });
+    };
+    if (document.body) ok(); else document.addEventListener('DOMContentLoaded', ok);
+    // página (ou iframe) fechada/recarregada com a janela aberta: não deixa a de trás travada
+    window.addEventListener('pagehide', function () { travar(false); });
+  })();
+  window.MGJanela = { encaixar: encaixarJanelas, regiao: regiao };
 })();
