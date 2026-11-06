@@ -43,7 +43,7 @@ window.MGPlanilha = (function () {
   // ---- leitura do sistema ----
   async function lerTudo(aoProgresso) {
     const p = aoProgresso || (() => {});
-    const [coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes, catalogo, radar_desconsiderados, convergentes] = await Promise.all([
+    const [coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes, catalogo, radar_desconsiderados, convergentes, padronizacao] = await Promise.all([
       MG.buscarTudo('coletor', 'nreg,data_hora,dia,hora,hora_anterior,t_ciclo_s,idturno,menuid,qnt,qntdefeito,anulado,oee_operador,conjunto,problema,solucao,observacao,item', null, 'nreg',
         (a, t) => p(`Lendo apontamentos da Megadoor: ${a.toLocaleString('pt-BR')} de ${t.toLocaleString('pt-BR')}`)),
       MG.buscarTudo('classificacao', '*'),
@@ -57,11 +57,34 @@ window.MGPlanilha = (function () {
       MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte']).catch(() => []),
       MG.buscarTudo('catalogo', '*', null, 'id').catch(() => []),
       MG.buscarTudo('radar_desconsiderados', '*').catch(() => []),
-      MG.buscarTudo('convergentes', '*').catch(() => [])
-    ]).then(r => [...r.slice(0, 7), r[8], r[9], r[10], r[11], r[12]]);
+      MG.buscarTudo('convergentes', '*').catch(() => []),
+      lerPadronizacao().catch(() => ({}))
+    ]).then(r => [...r.slice(0, 7), r[8], r[9], r[10], r[11], r[12], r[13]]);
     const porOrdem = (a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9);
     subgrupos.sort(porOrdem); programadas.sort(porOrdem);
-    return { coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes, catalogo, radar_desconsiderados, convergentes };
+    return { coletor, classif, montagem, limpeza, os, subgrupos, programadas, ajustes, divisoes, catalogo, radar_desconsiderados, convergentes, padronizacao };
+  }
+
+  // ---- padronização de nomes (conjunto/item/problema/solução) ----
+  // Guardada em configuracao.chave = 'padronizacao' como { conjunto: { chave: 'Nome padrão' }, item: {...}, ... }.
+  // Não altera o que o operador escreveu: só é aplicada nas análises (Painel).
+  const chavePadrao = v => String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  async function lerPadronizacao() {
+    const { data, error } = await MG.sb.from('configuracao').select('valor').eq('chave', 'padronizacao').maybeSingle();
+    if (error) throw error;
+    return (data && data.valor) || {};
+  }
+  async function salvarPadronizacao(mapa) {
+    const { error } = await MG.sb.from('configuracao').upsert({ chave: 'padronizacao', valor: mapa }, { onConflict: 'chave' });
+    if (error) throw new Error(error.message);
+  }
+  function padronizador(mapa) {
+    mapa = mapa || {};
+    return (nivel, v) => {
+      if (v == null || String(v).trim() === '') return v;
+      const m = mapa[nivel]; const k = chavePadrao(v);
+      return m && m[k] ? m[k] : v;
+    };
   }
 
   // ---- abas ----
@@ -78,7 +101,8 @@ window.MGPlanilha = (function () {
     for (const l of d.coletor) {
       const c = cls[l.nreg] || {};
       const a = aj[l.nreg] || {};
-      const v = k => a[k] != null ? a[k] : l[k];
+      const pad = d.padronizar || ((k, x) => x);
+    const v = k => pad(k, a[k] != null ? a[k] : l[k]);
       const meus = Object.keys(NOMES).filter(k => a[k] != null).map(k => NOMES[k]).join(', ');
       const tc = l.t_ciclo_s;
       const tk = MG.taktDe(l.dia || l.data_hora);
@@ -94,7 +118,7 @@ window.MGPlanilha = (function () {
         linhas.push([l.nreg, serialDataHora(l.data_hora), serialDia(dia), dd, m, y, fracHora(p ? p.fim : l.hora), fracHora(p ? p.inicio : l.hora_anterior),
           tcp, l.idturno, tk.nominal, tc == null ? null : (tc - tk.nominal) * fr, tk.takt, tc == null ? null : (tc - tk.takt) * fr,
           tc == null ? null : (tc - tk.takt) / tk.nominal * fr, cc.programada || null, cc.grupo || null, cc.seis_perdas || null, cc.subgrupo || null,
-          l.oee_operador, ...['conjunto', 'item', 'problema', 'solucao'].map(k => (p && p[k]) || v(k)), l.observacao,
+          l.oee_operador, ...['conjunto', 'item', 'problema', 'solucao'].map(k => (p && p[k]) ? pad(k, p[k]) : v(k)), l.observacao,
           p ? (p.parte === 1 ? l.qnt : 0) : l.qnt, l.qntdefeito != null ? (p && p.parte !== 1 ? 0 : l.qntdefeito) : (l.qnt == null ? null : 0),
           p ? (p.obs || null) : (a.obs || null), meus || null, p ? `${p.parte}/${partes.length}` : null]);
       }
@@ -205,6 +229,7 @@ window.MGPlanilha = (function () {
   // opcoes.extras: inclui as tabelas do sistema como estão (para o backup).
   function montar(d, opcoes) {
     opcoes = opcoes || {};
+    if (opcoes.padronizar) d = Object.assign({}, d, { padronizar: padronizador(d.padronizacao) });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, abaApontamentos(d), 'Apontamentos');
     XLSX.utils.book_append_sheet(wb, abaMenus(d), 'menus');
@@ -236,5 +261,5 @@ window.MGPlanilha = (function () {
     return wb;
   }
 
-  return { lerTudo, montar, totalLimpeza, totalOS, serialDia, COR };
+  return { lerTudo, montar, totalLimpeza, totalOS, serialDia, COR, chavePadrao, lerPadronizacao, salvarPadronizacao, padronizador };
 })();

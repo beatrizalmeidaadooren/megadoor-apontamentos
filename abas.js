@@ -1011,6 +1011,8 @@ window.MGAbas = (function () {
           if (r.error) { CTX.erro('Erro ao atualizar os de baixo: ' + r.error.message); break; }
         }
         if (CT.sel[n] === c.nome) CT.sel[n] = novo;
+        // o que já foi apontado com o nome antigo passa a contar como o novo nas análises
+        try { await padDefinir(c.nivel, [c.nome], novo, true); } catch (e2) { CTX.erro('Renomeado no menu, mas não consegui padronizar os apontamentos antigos: ' + e2.message); }
         return catFeito('Renomeado');
       }
     });
@@ -1045,6 +1047,128 @@ window.MGAbas = (function () {
       finally { b.disabled = false; }
     });
     catCarregar();
+    padIniciar();
+  }
+
+  /* ---- Padronizar os nomes já escritos nos apontamentos ("motor caixa" = "motor da caixa") ---- */
+  const PD = { nivel: 'conjunto', mapa: {}, usados: null, sel: new Set(), busca: '' };
+  const PARADA = new Set(['de', 'da', 'do', 'das', 'dos', 'que', 'faz', 'a', 'o', 'e', 'as', 'os', 'para', 'com', 'na', 'no', 'em', 'um', 'uma']);
+  const parecido = v => MGPlanilha.chavePadrao(v).split(' ').filter(w => w && !PARADA.has(w)).map(w => w.length > 5 && /es$/.test(w) ? w.slice(0, -2) : w.length > 3 ? w.replace(/s$/, '') : w).sort().join(' ');
+  function padHTML() {
+    return `<div class="card" id="pdCard"><h2 style="font-size:16px">Padronizar nomes escritos nos apontamentos</h2>
+      <p class="muted" style="margin:4px 0 8px;max-width:100ch">Cada um escreve de um jeito (“motor caixa”, “motor da caixa”, “motor que faz a caixa”). Marque as variações e diga como devem ficar:
+      nas análises (Painel e Pareto de paradas), todas passam a contar como o mesmo nome. O que o operador escreveu continua guardado como estava. Nomes parecidos aparecem juntos, marcados com uma barra azul.</p>
+      <div class="barra" style="margin:0 0 8px;gap:6px;flex-wrap:wrap">
+        ${NIV.map(([k, r]) => `<button class="btn small${k === PD.nivel ? ' primary' : ''}" type="button" data-pdn="${k}">${r}</button>`).join('')}
+        <input id="pdBusca" placeholder="buscar…" style="min-width:160px">
+        <label class="muted" style="font-size:12.5px"><input type="checkbox" id="pdSoParecidos"> só os que têm parecidos</label>
+        <span class="muted" id="pdMsg"></span></div>
+      <div class="scroll" style="max-height:420px"><table id="pdTabela"></table></div>
+      ${CTX.dona ? `<div class="barra" style="margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center"><b id="pdQtd">0 marcados</b>
+        <span>→ padronizar como</span><input id="pdPara" placeholder="nome padrão (escolha ou digite)" style="min-width:260px">
+        <button class="btn small primary" type="button" id="pdAplicar">Padronizar</button>
+        <button class="btn small" type="button" id="pdLimparSel">Desmarcar</button></div>` : ''}</div>`;
+  }
+  async function padCarregarUsados() {
+    $('pdMsg').textContent = 'Lendo os apontamentos…';
+    const [col, aj, dv, os] = await Promise.all([
+      MG.buscarTudo('coletor', 'nreg,conjunto,item,problema,solucao', q => q.or('conjunto.not.is.null,item.not.is.null,problema.not.is.null,solucao.not.is.null')),
+      MG.buscarTudo('ajustes', '*').catch(() => []),
+      MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte']).catch(() => []),
+      MG.buscarTudo('os', 'id,conjunto,item,problema,solucao', null, 'id').catch(() => [])]);
+    const ajN = {}; aj.forEach(a => ajN[a.nreg] = a);
+    const limpa = v => { const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return /^[-.?\s]*$/.test(t) ? '' : t; };
+    const U = {}; NIV.forEach(([k]) => U[k] = new Map());
+    const conta = (k, v) => { v = limpa(v); if (!v) return; const m = U[k], c = m.get(v); m.set(v, (c || 0) + 1); };
+    col.forEach(l => { const a = ajN[l.nreg] || {}; NIV.forEach(([k]) => conta(k, a[k] != null ? a[k] : l[k])); });
+    aj.forEach(a => { if (!col.some(l => l.nreg === a.nreg)) NIV.forEach(([k]) => conta(k, a[k])); });
+    dv.concat(os).forEach(x => NIV.forEach(([k]) => conta(k, x[k])));
+    CT.linhas.forEach(c => { if (!U[c.nivel].has(c.nome)) U[c.nivel].set(c.nome, 0); });
+    PD.usados = U; $('pdMsg').textContent = '';
+  }
+  function padRender() {
+    if (!PD.usados) return;
+    const m = PD.mapa[PD.nivel] || {};
+    const q = MGPlanilha.chavePadrao(PD.busca);
+    let xs = [...PD.usados[PD.nivel].entries()].map(([v, n]) => ({ v, n, par: parecido(v), para: m[MGPlanilha.chavePadrao(v)] || null }));
+    // grupos de parecidos: mesma chave "sem preposições", ou já padronizados para o mesmo nome
+    const grupo = x => x.para ? 'P:' + MGPlanilha.chavePadrao(x.para) : 'S:' + x.par;
+    const tam = {}; xs.forEach(x => { tam[grupo(x)] = (tam[grupo(x)] || 0) + 1; tam['S:' + x.par] = (tam['S:' + x.par] || 0) + (x.para ? 1 : 0); });
+    if (q) xs = xs.filter(x => MGPlanilha.chavePadrao(x.v).includes(q) || (x.para && MGPlanilha.chavePadrao(x.para).includes(q)));
+    if ($('pdSoParecidos') && $('pdSoParecidos').checked) xs = xs.filter(x => tam[grupo(x)] > 1);
+    xs.sort((a, b) => grupo(a).localeCompare(grupo(b), 'pt') || b.n - a.n);
+    const ed = CTX.dona ? '' : 'disabled';
+    $('pdTabela').innerHTML = `<thead><tr><th></th><th>Escrito como</th><th>Vezes</th><th>Conta nas análises como</th><th></th></tr></thead><tbody>` +
+      (xs.length ? xs.map(x => `<tr data-v="${esc(x.v)}" style="${tam[grupo(x)] > 1 ? 'box-shadow:inset 3px 0 var(--info)' : ''}">
+        <td><input type="checkbox" class="pd-sel" ${PD.sel.has(x.v) ? 'checked' : ''} ${ed}></td><td>${esc(x.v)}</td><td class="num">${nf(x.n)}</td>
+        <td>${x.para ? `<b style="color:var(--info)">${esc(x.para)}</b>` : '<span class="muted">(fica como está)</span>'}</td>
+        <td>${x.para && CTX.dona ? '<button class="btn small pd-desf" type="button" title="Voltar a contar como está escrito">desfazer</button>' : ''}</td></tr>`).join('')
+        : '<tr><td colspan="5" class="muted" style="padding:12px">Nada aqui.</td></tr>') + '</tbody>';
+    if ($('pdQtd')) $('pdQtd').textContent = nf(PD.sel.size) + ' marcado' + (PD.sel.size === 1 ? '' : 's');
+  }
+  // mapa[nivel][chave(variação)] = padrão. Inclui o próprio padrão, para ele não ser trocado por outro depois.
+  async function padDefinir(nivel, variacoes, para, silencioso) {
+    para = String(para || '').replace(/\s+/g, ' ').trim(); if (!para) throw new Error('Escreva o nome padrão.');
+    const mapa = await MGPlanilha.lerPadronizacao();
+    const m = mapa[nivel] = mapa[nivel] || {};
+    const kp = MGPlanilha.chavePadrao(para);
+    // quem já apontava para alguma das variações passa a apontar para o novo padrão
+    const ks = new Set(variacoes.map(MGPlanilha.chavePadrao));
+    Object.keys(m).forEach(k => { if (ks.has(MGPlanilha.chavePadrao(m[k]))) m[k] = para; });
+    ks.forEach(k => { m[k] = para; });
+    if (m[kp] === para || !m[kp]) delete m[kp];
+    await MGPlanilha.salvarPadronizacao(mapa);
+    PD.mapa = mapa;
+    if (!silencioso) CTX.aviso('Padronizado');
+  }
+  async function padIniciar() {
+    const caixa = document.createElement('div'); caixa.innerHTML = padHTML();
+    $('sec-menus').appendChild(caixa);
+    const card = $('pdCard');
+    card.addEventListener('click', async e => {
+      const b = e.target.closest('button');
+      if (b && b.dataset.pdn) { PD.nivel = b.dataset.pdn; PD.sel.clear(); card.querySelectorAll('[data-pdn]').forEach(x => x.classList.toggle('primary', x === b)); padRender(); return; }
+      if (b && b.id === 'pdLimparSel') { PD.sel.clear(); padRender(); return; }
+      if (b && b.id === 'pdAplicar') {
+        if (!PD.sel.size) { CTX.erro('Marque pelo menos um nome.'); return; }
+        try { await padDefinir(PD.nivel, [...PD.sel], $('pdPara').value); PD.sel.clear(); $('pdPara').value = ''; padRender(); } catch (er) { CTX.erro('Erro ao padronizar: ' + er.message); }
+        return;
+      }
+      if (b && b.classList.contains('pd-desf')) {
+        const v = b.closest('tr').dataset.v;
+        try {
+          const mapa = await MGPlanilha.lerPadronizacao(); const m = mapa[PD.nivel] || {};
+          delete m[MGPlanilha.chavePadrao(v)];
+          await MGPlanilha.salvarPadronizacao(mapa); PD.mapa = mapa; padRender(); CTX.aviso('Desfeito');
+        } catch (er) { CTX.erro('Erro: ' + er.message); }
+      }
+    });
+    card.addEventListener('change', e => {
+      const t = e.target;
+      if (t.classList.contains('pd-sel')) {
+        const v = t.closest('tr').dataset.v; if (t.checked) PD.sel.add(v); else PD.sel.delete(v);
+        // sugere como padrão o nome mais usado entre os marcados
+        if (t.checked && $('pdPara') && !$('pdPara').value) {
+          const melhor = [...PD.sel].sort((a, b2) => (PD.usados[PD.nivel].get(b2) || 0) - (PD.usados[PD.nivel].get(a) || 0))[0];
+          // se já existe um nome parecido no menu, sugere o do menu
+          const doMenu = CT.linhas.find(c => c.nivel === PD.nivel && c.ativo !== false && [...PD.sel].some(v => parecido(v) === parecido(c.nome)));
+          $('pdPara').value = (PD.mapa[PD.nivel] || {})[MGPlanilha.chavePadrao(melhor)] || (doMenu && doMenu.nome) || melhor;
+        }
+        if ($('pdQtd')) $('pdQtd').textContent = nf(PD.sel.size) + ' marcado' + (PD.sel.size === 1 ? '' : 's');
+      }
+      if (t.id === 'pdSoParecidos') padRender();
+    });
+    $('pdBusca').addEventListener('input', () => { PD.busca = $('pdBusca').value; padRender(); });
+    if ($('pdPara')) MGSugere.anexar(card, '#pdPara', {
+      fonte: () => {
+        const nomes = new Set(CT.linhas.filter(c => c.nivel === PD.nivel && c.ativo !== false).map(c => c.nome));
+        Object.values(PD.mapa[PD.nivel] || {}).forEach(v => nomes.add(v));
+        return { itens: [...nomes].sort((a, b) => a.localeCompare(b, 'pt')), podeAdicionar: false };
+      },
+      titulo: () => 'Nome padrão (do menu ou já usado como padrão)'
+    });
+    try { PD.mapa = await MGPlanilha.lerPadronizacao(); await padCarregarUsados(); padRender(); }
+    catch (e) { $('pdMsg').textContent = 'Erro ao carregar: ' + e.message; }
   }
 
   /* =================== TAKT TIME POR PERÍODO =================== */
