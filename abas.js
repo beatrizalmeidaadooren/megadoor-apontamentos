@@ -42,7 +42,8 @@ window.MGAbas = (function () {
     return CAMPOS_M.filter(([k]) => valCmp(sistema[k]) !== valCmp(arquivo[k]));
   }
   const MAQ_SUGESTOES = ['MEGADOOR', 'CERCOMAK', '-', '?'];
-  const fora = d => /^IGNORA OEE|^FOLGA FISIOLOGICA/.test(norm(d));
+  // sem descrição também não conta (são os 'buracos' da noite, de 16–17 h; o Painel Montagem já fazia assim)
+  const fora = d => !String(d == null ? '' : d).trim() || /^IGNORA OEE|^FOLGA FISIOLOGICA/.test(norm(d));
 
   function montagemHTML() {
     return `
@@ -118,7 +119,7 @@ window.MGAbas = (function () {
     const h = s => (s / 3600).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' h';
     $('mKpis').innerHTML = `
       <div class="kpi"><span>Apontamentos no filtro</span><b>${nf(L.length)}</b></div>
-      <div class="kpi"><span>Tempo perdido (sem Ignora OEE/Folga)</span><b>${h(tempo(contam))}</b></div>
+      <div class="kpi"><span>Tempo perdido (sem Ignora OEE, Folga e sem descrição)</span><b>${h(tempo(contam))}</b></div>
       <div class="kpi"><span>Marcados MEGADOOR</span><b style="color:var(--info)">${nf(mega.length)} · ${h(tempo(mega))}</b></div>
       <div class="kpi"><span>Sem .MÁQUINA (perdas)</span><b style="color:var(--bad)">${nf(semMarca.length)}</b></div>`;
     $('mResumo').innerHTML = `${nf(M.linhas.length)} apontamentos no sistema` + (FM && FM.ativos() ? ` · ${FM.ativos()} filtro(s) de coluna <button class="btn small" type="button" id="mLimparF">Limpar filtros das colunas</button>` : '');

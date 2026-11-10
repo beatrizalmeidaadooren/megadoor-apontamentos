@@ -269,11 +269,11 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="comum.js?v=2026-11-06d"></script>
-<script src="planilha.js?v=2026-11-06d"></script>
-<script src="filtros.js?v=2026-11-06d"></script>
-<script src="explica.js?v=2026-11-06d"></script>
-<script src="abas.js?v=2026-11-06d"></script>
+<script src="comum.js?v=2026-11-10a"></script>
+<script src="planilha.js?v=2026-11-10a"></script>
+<script src="filtros.js?v=2026-11-10a"></script>
+<script src="explica.js?v=2026-11-10a"></script>
+<script src="abas.js?v=2026-11-10a"></script>
 <script>
 (function () {
   const sb = MG.sb;
@@ -590,8 +590,12 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     const setup = fs.filter(f => norm(f.c.seis_perdas) === 'setup e ajuste');
     const quebra = fs.filter(f => norm(legado(f.c.subgrupo)) === 'quebra de maquina');
     const media = n.reduce((a, l) => a + l.t_ciclo_s, 0) / n.length;
+    const ord = n.map(l => l.t_ciclo_s).sort((a, b) => a - b);
+    const mediana = ord.length % 2 ? ord[(ord.length - 1) / 2] : (ord[ord.length / 2 - 1] + ord[ord.length / 2]) / 2;
+    const freq = new Map(); let moda = null, mx = 1;
+    ord.forEach(v => { const q = (freq.get(v) || 0) + 1; freq.set(v, q); if (q > mx) { mx = q; moda = v; } });
     return `
-      <div class="kpi"><span>Média do ciclo (paradas)</span><b>${nf(Math.round(media))} s</b></div>
+      <div class="kpi"><span>Média do ciclo (paradas)</span><b>${nf(Math.round(media))} s</b><span>mediana ${nf(Math.round(mediana))} s · moda ${moda == null ? '—' : nf(moda) + ' s'}</span></div>
       <div class="kpi"><span>Kits perdidos</span><b>${n1(kits(n))}</b></div>
       <div class="kpi"><span>Tempo perdido acima do takt</span><b>${h(soma(n))}</b></div>
       <div class="kpi"><span>Tempo perdido por setup</span><b>${h(somaF(setup))}</b></div>
@@ -718,7 +722,7 @@ tr.hoje td{background:color-mix(in srgb,var(--warn-bg) 60%,transparent)}
     let v = inp.value.replace(/\s+/g, ' ').trim();
     if (k === 'obs') novo.obs = v || null;
     else novo[k] = (!v || v === (l[k] || '').replace(/\s+/g, ' ').trim()) ? null : v;
-    const vazio = AJ_CAMPOS.every(c => novo[c] == null) && novo.obs == null;
+    const vazio = AJ_CAMPOS.every(c => novo[c] == null) && novo.obs == null && novo.pecas_defeito == null;   // não apaga as peças com defeito informadas no Painel
     tr.classList.add('salvando');
     let r;
     if (vazio) r = await sb.from('ajustes').delete().eq('nreg', nreg);

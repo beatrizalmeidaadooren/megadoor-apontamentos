@@ -94,11 +94,14 @@ window.MGPlanilha = (function () {
     const NOMES = { conjunto: 'CONJUNTO', item: 'ITEM', problema: 'PROBLEMA', solucao: 'SOLUÇÃO' };
     const cab = ['REGISTRO', 'DATA E HORA', 'DATA', 'DIA', 'MÊS', 'ANO', 'HORA', 'H ANTERIOR', 'T CICLO', 'TURNO', 'T CICLO NOMINAL',
       'T PERDIDO', 'TAKT TIME', 'FORA DO TAKT TIME', 'KITS PERDIDOS', 'PROGRAMADA', 'GRUPO DO EE', '6 GRANDES PERDAS', 'SUBGRUPO DO OEE',
-      'OEE Operador', 'CONJUNTO', 'ITEM', 'PROBLEMA', 'SOLUÇÃO', 'OBSERVAÇÕES', 'qnt', 'qntdefeito', 'MINHAS OBSERVAÇÕES', 'PREENCHIDO POR MIM', 'PARTE'];
+      'OEE Operador', 'CONJUNTO', 'ITEM', 'PROBLEMA', 'SOLUÇÃO', 'OBSERVAÇÕES', 'qnt', 'qntdefeito', 'MINHAS OBSERVAÇÕES', 'PREENCHIDO POR MIM', 'PARTE', 'DEFEITO ESTIMADO'];
     const div = {}; (d.divisoes || []).forEach(p => (div[p.nreg] = div[p.nreg] || []).push(p));
     Object.values(div).forEach(xs => xs.sort((a, b) => a.parte - b.parte));
     const linhas = [cab];
     for (const l of d.coletor) {
+      // registros de sistema (menuid 99999: repetem a mesma hora anterior e duplicam a parada) e
+      // reinício do coletor (hora anterior 06:00:00): a análise ignora, como o resto do sistema
+      if (d.semSistema && (l.menuid === 99999 || String(l.hora_anterior || '').slice(0, 8) === '06:00:00')) continue;
       const c = cls[l.nreg] || {};
       const a = aj[l.nreg] || {};
       const pad = d.padronizar || ((k, x) => x);
@@ -110,17 +113,26 @@ window.MGPlanilha = (function () {
       const [y, m, dd] = dia ? dia.split('-').map(Number) : [null, null, null];
       // apontamento dividido: uma linha por parte, com o tempo e os indicadores repartidos na proporção da duração
       const partes = (div[l.nreg] && div[l.nreg].length > 1) ? div[l.nreg] : [null];
+      const q = Math.max(1, Math.round(l.qnt || 1));   // registro com mais de uma peça: o tempo esperado é q × ciclo
       const totP = partes[0] ? partes.reduce((a, p) => a + p.segundos, 0) || tc : tc;
       for (const p of partes) {
         const fr = p ? p.segundos / totP : 1;
         const cc = p || c;
         const tcp = tc == null ? null : (p ? p.segundos : tc);
+        // Peças com defeito (Qualidade do OEE): o que o coletor registrou + o que você informou no
+        // apontamento. Apontamento classificado como defeito (6 Grandes Perdas = Defeitos...) sem a
+        // quantidade informada conta 1 peça e fica marcado como estimado.
+        const ehDefeito = /^defeitos/i.test(String(cc.seis_perdas || '').trim());
+        const primeira = !p || p.parte === 1;
+        let defeitos = primeira ? (l.qntdefeito || 0) + (a.pecas_defeito != null ? a.pecas_defeito : 0) : 0, estimado = false;
+        if (ehDefeito && a.pecas_defeito == null && !(l.qntdefeito > 0)) { defeitos += 1; estimado = true; }
+        if (l.qnt == null && !defeitos) defeitos = null;
         linhas.push([l.nreg, serialDataHora(l.data_hora), serialDia(dia), dd, m, y, fracHora(p ? p.fim : l.hora), fracHora(p ? p.inicio : l.hora_anterior),
-          tcp, l.idturno, tk.nominal, tc == null ? null : (tc - tk.nominal) * fr, tk.takt, tc == null ? null : (tc - tk.takt) * fr,
-          tc == null ? null : (tc - tk.takt) / tk.nominal * fr, cc.programada || null, cc.grupo || null, cc.seis_perdas || null, cc.subgrupo || null,
+          tcp, l.idturno, tk.nominal, tc == null ? null : (tc - tk.nominal * q) * fr, tk.takt, tc == null ? null : (tc - tk.takt * q) * fr,
+          tc == null ? null : (tc - tk.takt * q) / tk.nominal * fr, cc.programada || null, cc.grupo || null, cc.seis_perdas || null, cc.subgrupo || null,
           l.oee_operador, ...['conjunto', 'item', 'problema', 'solucao'].map(k => (p && p[k]) ? pad(k, p[k]) : v(k)), l.observacao,
-          p ? (p.parte === 1 ? l.qnt : 0) : l.qnt, l.qntdefeito != null ? (p && p.parte !== 1 ? 0 : l.qntdefeito) : (l.qnt == null ? null : 0),
-          p ? (p.obs || null) : (a.obs || null), meus || null, p ? `${p.parte}/${partes.length}` : null]);
+          p ? (p.parte === 1 ? l.qnt : 0) : l.qnt, defeitos,
+          p ? (p.obs || null) : (a.obs || null), meus || null, p ? `${p.parte}/${partes.length}` : null, estimado ? 'SIM' : null]);
       }
     }
     const ws = XLSX.utils.aoa_to_sheet(linhas);
@@ -230,6 +242,7 @@ window.MGPlanilha = (function () {
   function montar(d, opcoes) {
     opcoes = opcoes || {};
     if (opcoes.padronizar) d = Object.assign({}, d, { padronizar: padronizador(d.padronizacao) });
+    if (opcoes.semSistema) d = Object.assign({}, d, { semSistema: true });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, abaApontamentos(d), 'Apontamentos');
     XLSX.utils.book_append_sheet(wb, abaMenus(d), 'menus');
