@@ -1389,8 +1389,31 @@ window.MGAbas = (function () {
   function qbOpcoes(e) {
     const t = new Date(e.data + 'T' + e.hi + ':00-03:00').getTime();
     const dist = o => { const r = osQuando(o).ref; if (!r) return 9e15; return Math.abs(new Date(r.slice(0, 10) + 'T' + (r.slice(11, 16) || '12:00') + ':00-03:00').getTime() - t); };
-    return O.linhas.slice().sort((a, b) => dist(a) - dist(b)).map(o => `<option value="${esc(qbRotulo(o))}">`).join('');
+    return O.linhas.slice().sort((a, b) => dist(a) - dist(b));
   }
+  // lista de OS do próprio site (com dia, hora, descrição e mantenedor) para ligar a quebra a uma OS
+  function qbPopMostrar(inp) {
+    const linha = inp.closest('[data-qid]'), ev = linha && QB.lista.find(x => x.id === linha.dataset.qid); if (!ev) return;
+    let pop = linha.querySelector('.qb-pop');
+    if (!pop) { pop = document.createElement('div'); pop.className = 'qb-pop'; pop.setAttribute('role', 'listbox'); inp.parentElement.appendChild(pop); }
+    const termos = norm(inp.value).split(' ').filter(Boolean);
+    const xs = qbOpcoes(ev).filter(o => {
+      const tx = norm([o.numero ? 'OS ' + o.numero : 'sem nº', osQuando(o).tx, o.descricao, o.mantenedor, participantes(o).join(' ')].join(' '));
+      return termos.every(t => tx.includes(t));
+    }).slice(0, 40);
+    pop.innerHTML = xs.length ? xs.map((o, i) => { const q = osQuando(o);
+      return `<button type="button" class="qb-op ${i === 0 ? 'ativo' : ''}" data-qb-os="${o.id}" role="option">
+        <span class="qb-op-l1"><b>${o.numero ? 'OS ' + o.numero : 'sem nº'}</b><span class="qb-op-q">${esc(q.tx)}</span>${txt(o.mantenedor) ? `<span class="muted">${esc(String(o.mantenedor).replace(/\s+/g, ' '))}</span>` : ''}</span>
+        <span class="qb-op-d">${esc(o.descricao || '(sem descrição)')}</span></button>`; }).join('')
+      : '<div class="muted" style="padding:8px">Nenhuma OS encontrada.</div>';
+    // fica por cima de tudo (a lista de quebras tem rolagem própria e cortaria o menu)
+    const r = inp.getBoundingClientRect(), alto = Math.min(340, pop.scrollHeight + 10);
+    const embaixo = window.innerHeight - r.bottom - 8, emCima = r.top - 8;
+    pop.style.position = 'fixed'; pop.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+    if (embaixo >= Math.min(alto, 220) || embaixo >= emCima) { pop.style.top = (r.bottom + 4) + 'px'; pop.style.bottom = ''; pop.style.maxHeight = Math.max(140, Math.min(340, embaixo)) + 'px'; }
+    else { pop.style.bottom = (window.innerHeight - r.top + 4) + 'px'; pop.style.top = ''; pop.style.maxHeight = Math.max(140, Math.min(340, emCima)) + 'px'; }
+  }
+  function qbPopFechar(exceto) { document.querySelectorAll('#oQb .qb-pop').forEach(p => { if (p !== exceto) p.remove(); }); }
   function qbTexto(e) {
     const ci = [e.conjunto, e.item].filter(Boolean).join(' › ');
     return [ci, e.problema, e.solucao ? 'solução: ' + e.solucao : '', e.obs_operador ? 'operador: ' + e.obs_operador : '', e.minha_obs ? 'sua obs.: ' + e.minha_obs : ''].filter(Boolean).join(' · ');
@@ -1420,7 +1443,7 @@ window.MGAbas = (function () {
             <div class="os-qb-tx">${esc(qbTexto(e)) || '<span class="muted">sem descrição no apontamento</span>'}</div></div>
           ${dona ? `<div class="os-qb-ac">${QB.verIgn ? '<button class="btn small" type="button" data-qb="designorar">Voltar para a lista</button>'
             : `<button class="btn small primary" type="button" data-qb="criar">Criar OS</button>
-              <input data-qb="vincular" list="qbOS-${esc(e.id)}" placeholder="Já tem OS? digite o nº ou a descrição" title="Digite e escolha a OS na lista; as mais próximas da data da quebra aparecem primeiro"><datalist id="qbOS-${esc(e.id)}">${qbOpcoes(e)}</datalist>
+              <span class="qb-busca"><input data-qb="busca-os" autocomplete="off" placeholder="Já tem OS? digite o nº ou a descrição" title="As OS com data mais próxima da quebra aparecem primeiro"></span>
               <button class="btn small" type="button" data-qb="ignorar" title="Não precisa de OS">Não precisa</button>`}</div>` : ''}
         </div>`).join('')}</div>` : `<p class="muted">${QB.verIgn ? 'Nenhuma.' : 'Todas as quebras de máquina do período já têm OS.'}</p>`}
     </details>`;
@@ -1434,9 +1457,10 @@ window.MGAbas = (function () {
     if (error) CTX.erro('Erro ao salvar: ' + error.message);
   }
   async function qbAcao(e) {
-    const alvo = e.target.closest('[data-qb]'); if (!alvo) return;
-    const act = alvo.dataset.qb;
-    if (e.type === 'click' && alvo.tagName === 'SELECT') return;
+    const op = e.target.closest('[data-qb-os]');
+    const alvo = op || e.target.closest('[data-qb]'); if (!alvo) return;
+    const act = op ? 'vincular' : alvo.dataset.qb;
+    if (e.type === 'click' && (alvo.tagName === 'SELECT' || alvo.tagName === 'INPUT')) return;
     if (act === 'recarregar') { qbCarregar(); return; }
     if (act === 'ver-ign') { QB.verIgn = !QB.verIgn; qbRender(); return; }
     if (!CTX.dona) return;
@@ -1444,9 +1468,8 @@ window.MGAbas = (function () {
     if (act === 'ignorar') { QB.ignor = [...new Set([...QB.ignor, ev.id])]; await qbSalvarIgn(); qbRender(); CTX.aviso('Marcada como "não precisa de OS"'); return; }
     if (act === 'designorar') { QB.ignor = QB.ignor.filter(x => x !== ev.id); await qbSalvarIgn(); qbRender(); return; }
     if (act === 'vincular') {
-      const v = alvo.value.trim(); if (!v) return;
-      const o = O.linhas.find(x => qbRotulo(x) === v) || (/^\d+$/.test(v) ? O.linhas.find(x => String(x.numero) === v) : null);
-      if (!o) { CTX.erro('Não achei essa OS. Digite e escolha uma opção da lista.'); return; }
+      const o = O.linhas.find(x => String(x.id) === String(alvo.dataset.qbOs)); if (!o) return;
+      qbPopFechar();
       await salvarOS(o, { apontamentos: [...apontsDe(o), ev] }, `Quebra ligada à ${o.numero ? 'OS ' + o.numero : 'OS sem nº'}`);
       return;
     }
@@ -1494,8 +1517,22 @@ window.MGAbas = (function () {
     $('oQb').addEventListener('click', qbAcao);
     $('oQb').addEventListener('change', e => {
       if (e.target.id === 'qbPeriodo') { QB.periodo = Number(e.target.value); qbRender(); return; }
-      if (e.target.dataset.qb === 'vincular' && e.target.value) qbAcao(e);
     });
+    $('oQb').addEventListener('focusin', e => { if (e.target.dataset.qb === 'busca-os') { qbPopFechar(e.target.parentElement.querySelector('.qb-pop')); qbPopMostrar(e.target); } });
+    $('oQb').addEventListener('input', e => { if (e.target.dataset.qb === 'busca-os') qbPopMostrar(e.target); });
+    $('oQb').addEventListener('keydown', e => {
+      if (e.target.dataset.qb !== 'busca-os') return;
+      const pop = e.target.parentElement.querySelector('.qb-pop'); if (!pop) return;
+      const ops = [...pop.querySelectorAll('.qb-op')], i = ops.findIndex(b => b.classList.contains('ativo'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); if (!ops.length) return;
+        const j = Math.max(0, Math.min(ops.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+        ops.forEach(b => b.classList.remove('ativo')); ops[j].classList.add('ativo'); ops[j].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') { e.preventDefault(); if (ops[i]) ops[i].click(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); pop.remove(); }
+    });
+    document.addEventListener('mousedown', e => { if (!e.target.closest('.qb-busca')) qbPopFechar(); });
+    window.addEventListener('scroll', e => { if (!(e.target && e.target.closest && e.target.closest('.qb-pop'))) qbPopFechar(); }, true);
     $('oSg').addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) SG.abertos[d.dataset.sec] = d.open; }, true);
     $('oNova').addEventListener('click', async () => {
       const btn = $('oNova'); if (btn.disabled) return; btn.disabled = true;
