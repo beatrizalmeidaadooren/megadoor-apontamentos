@@ -691,7 +691,7 @@ window.MGAbas = (function () {
   const SG = { ultimo: null, dec: { __ignoradas: [] }, conf: null, abertos: {}, mant: 'DOUGLAS', linhas: null, arquivo: '' };
   const ST_ORDEM = { 'ATRASADA': 1, 'EM ANDAMENTO ATRASADA': 2, 'ABERTA': 3, 'EM ANDAMENTO': 4, 'CONCLUIDA': 5 };
   const SG_CAMPOS = [['descricao', 'Descrição'], ['mantenedor', 'Mantenedor'], ['data', 'Data (programada)'], ['feitas', 'Feitas'],
-    ['ordem_grupo', 'ID (pendência)'], ['conjunto', 'Conjunto'], ['item', 'Item'], ['problema', 'Problema'], ['solucao', 'Solução']];
+    ['ordem_grupo', 'ID (pendência)'], ['conjunto', 'Conjunto'], ['item', 'Item'], ['problema', 'Problema'], ['solucao', 'Solução'], ['observacoes', 'Observação']];
   const PARTES = ['conjunto', 'item', 'problema', 'solução'];
   const SG_PARADA = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'QUE', 'PARA', 'COM', 'NA', 'NO', 'EM', 'UM', 'UMA', 'ESTA', 'ESTAO', 'SEM', 'POR', 'NAO', 'MAIS', 'FOI']);
   const limpaTxt = v => v == null ? '' : String(v).replace(/_x000d_/gi, '').replace(/\r/g, '');
@@ -745,7 +745,7 @@ window.MGAbas = (function () {
   /* ---------- leitura do arquivo exportado do SGMAN ---------- */
   function sgCips(com) {
     const linhas = limpaTxt(com).split('\n').map(l => l.trim()).filter(Boolean);
-    return { linhas, cips: linhas.length >= 4 ? { conjunto: linhas[0], item: linhas[1], problema: linhas[2], solucao: linhas.slice(3).join('\n') } : null };
+    return { linhas, cips: linhas.length >= 4 ? { conjunto: linhas[0], item: linhas[1], problema: linhas[2], solucao: linhas[3], observacoes: linhas.slice(4).join('\n') || null } : null };
   }
   async function sgLerArquivo(f) {
     try {
@@ -860,7 +860,7 @@ window.MGAbas = (function () {
     h += `<details data-sec="dif" ${ab("dif", true)} style="margin-top:12px"><summary><b>Diferenças entre o site e o SGMAN</b> — ${nf(C.mudancas.length)} OS, ${nf(nCampos)} campos</summary>`;
     if (!C.mudancas.length) h += '<p class="muted">Nenhuma diferença: tudo o que está no site bate com o SGMAN.</p>';
     else {
-      h += `<p class="muted" style="margin:6px 0">Para cada campo, escolha qual valor manter. Quando o site está vazio, o SGMAN já vem marcado. Se escolher manter o do site, não pergunto de novo enquanto o SGMAN não mudar esse campo. Conjunto, Item, Problema e Solução vêm das 4 primeiras linhas do comentário.</p>`;
+      h += `<p class="muted" style="margin:6px 0">Para cada campo, escolha qual valor manter. Quando o site está vazio, o SGMAN já vem marcado. Se escolher manter o do site, não pergunto de novo enquanto o SGMAN não mudar esse campo. Conjunto, Item, Problema e Solução vêm das 4 primeiras linhas do comentário; a 5ª linha em diante é a Observação.</p>`;
       for (const m of C.mudancas) {
         h += `<div class="sg-os" data-num="${m.o.numero}" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
           <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span>${linhaSg(m.l)}</span>
@@ -1246,7 +1246,7 @@ window.MGAbas = (function () {
               <datalist id="osCat-${k}">${[...cat[k]].sort((a, b) => a.localeCompare(b, 'pt')).map(v => `<option value="${esc(v)}">`).join('')}</datalist></td></tr>`).join('')}
           </tbody></table>
         </div>
-        ${campo('observacoes', 'Observações', 'area', 2)}
+        ${campo('observacoes', 'Observação (5ª linha do comentário do mantenedor)', 'area', 2)}
         ${campo('analise', 'Análise', 'area', 2)}
         ${dona ? '<div style="margin-top:10px;text-align:right"><button class="btn small" type="button" data-excluir>Excluir OS</button></div>' : ''}`;
       jan.querySelector('.dv-x').onclick = fechar;
