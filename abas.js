@@ -1220,7 +1220,8 @@ window.MGAbas = (function () {
           <div class="os-pct ${pctClasse(pct)}">${Math.round(pct * 100)}%</div>
         </div>
         <div class="os-grade">
-          ${campo('numero', 'Nº OS', 'number')}${campo('ordem_grupo', 'ID da pendência', 'number')}${campo('aberta_por', 'Aberta por')}
+          ${campo('numero', 'Nº OS', 'number')}${campo('ordem_grupo', 'ID da pendência', 'number')}<label class="os-f"><span>Quem abriu a pendência</span><input data-k="aberta_por" list="osAbriu" value="${esc(o.aberta_por || '')}" placeholder="digite o nome" ${dis}>
+            <datalist id="osAbriu">${[...new Set(O.linhas.map(x => txt(x.aberta_por)).filter(Boolean))].sort((x, y) => x.localeCompare(y, 'pt')).map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
           ${campo('data_abertura', 'Data de abertura', 'date')}${campo('data', 'Data programada', 'date')}
           <div class="os-f"><span>Feita?</span>${feitaBtn(o, 'grande')}</div>
         </div>
