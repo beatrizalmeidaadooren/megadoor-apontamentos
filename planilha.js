@@ -38,6 +38,12 @@ window.MGPlanilha = (function () {
     const ok = v => v != null && String(v).trim() !== '';
     return [o.conjunto, o.item, o.problema, o.solucao].filter(ok).length / 4;
   }
+  // Meta do mantenedor Douglas: só contam as OS de set/2026 a fev/2027 (data programada; sem ela, a de abertura; sem data, conta)
+  const META_OS = { nome: 'DOUGLAS', de: '2026-09-01', ate: '2027-02-28', rotulo: 'set/26 a fev/27' };
+  function osNaMeta(o) {
+    const d = String(o.data || o.data_abertura || '').slice(0, 10);
+    return !d || (d >= META_OS.de && d <= META_OS.ate);
+  }
   const chaveNome = n => String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
 
   // ---- leitura do sistema ----
@@ -192,7 +198,7 @@ window.MGPlanilha = (function () {
     const regs = d.os.slice().sort((a, b) => (a.posicao || 1e9) - (b.posicao || 1e9) || a.id - b.id);
     const aoa = [];
     // Topo: % do mantenedor DOUGLAS (mesmas fórmulas E2 e E3 da planilha)
-    const doug = regs.filter(o => chaveNome(o.mantenedor) === 'DOUGLAS');
+    const doug = regs.filter(o => chaveNome(o.mantenedor) === 'DOUGLAS' && osNaMeta(o));
     const feitas = doug.filter(o => chaveNome(o.feitas) === 'SIM');
     const media = xs => xs.length ? xs.reduce((a, o) => a + totalOS(o), 0) / xs.length : null;
     aoa[0] = [null, 'Vanessa', null, null, 'DOUGLAS'];
@@ -260,7 +266,7 @@ window.MGPlanilha = (function () {
       if (d.catalogo) add('sis_catalogo', d.catalogo.map(c => ({ ...c, pai: String(c.pai || '').split('\t').join(' › ') })));
       add('sis_pendencias', d.pendencias || []);
       add('sis_limpeza', d.limpeza.map(r => ({ ...r, itens: (r.itens || []).map(x => x || '_').join(' ') })));
-      add('sis_os', d.os.map(r => ({ ...r, participantes: (r.participantes || []).join(', ') })));
+      add('sis_os', d.os.map(r => ({ ...r, participantes: (r.participantes || []).join(', '), apontamentos: (r.apontamentos || []).map(a => a.nreg + (a.parte ? '-' + a.parte : '')).join(', ') })));
       add('sis_montagem', d.montagem);
       if (d.montagem_pendente) add('sis_montagem_pendente', d.montagem_pendente.map(r => ({ ...r, dados: JSON.stringify(r.dados) })));
       if (d.montagem_historico) add('sis_montagem_historico', d.montagem_historico.map(r => ({ ...r, dados_antigos: JSON.stringify(r.dados_antigos), dados_novos: JSON.stringify(r.dados_novos) })));
@@ -274,5 +280,5 @@ window.MGPlanilha = (function () {
     return wb;
   }
 
-  return { lerTudo, montar, totalLimpeza, totalOS, serialDia, COR, chavePadrao, lerPadronizacao, salvarPadronizacao, padronizador };
+  return { META_OS, osNaMeta, lerTudo, montar, totalLimpeza, totalOS, serialDia, COR, chavePadrao, lerPadronizacao, salvarPadronizacao, padronizador };
 })();

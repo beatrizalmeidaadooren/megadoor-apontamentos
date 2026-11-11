@@ -667,7 +667,7 @@ window.MGAbas = (function () {
 
   async function osCarregar() {
     $('oResumo').textContent = 'Carregando…';
-    try { O.linhas = await MG.buscarTudo('os', '*', null, 'id'); await sgCarregarConfig(); osRender(); }
+    try { O.linhas = await MG.buscarTudo('os', '*', null, 'id'); await sgCarregarConfig(); osRender(); qbCarregar(); }
     catch (e) { CTX.erro('Erro ao carregar as OS: ' + e.message); $('oResumo').textContent = ''; }
   }
 
@@ -678,9 +678,10 @@ window.MGAbas = (function () {
     selM.innerHTML = '<option value="">Todos</option>' + [...nomes.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([k, n]) => `<option value="${esc(k)}">${esc(n)}</option>`).join('');
     selM.value = atual;
     $('oKpis').innerHTML = [...nomes.entries()].map(([k, n]) => {
-      const dele = O.linhas.filter(o => chave(o.mantenedor) === k), feitas = dele.filter(o => norm(o.feitas) === 'SIM');
+      const ehMeta = chave(n).split(' ')[0] === MGPlanilha.META_OS.nome;
+      const todas = O.linhas.filter(o => chave(o.mantenedor) === k), dele = ehMeta ? todas.filter(MGPlanilha.osNaMeta) : todas, feitas = dele.filter(o => norm(o.feitas) === 'SIM');
       const med = xs => xs.length ? Math.round(xs.reduce((a, o) => a + MGPlanilha.totalOS(o), 0) / xs.length * 100) + '%' : '—';
-      return `<div class="kpi"><span>${esc(n)} · ${dele.length} OS</span><b>${med(dele)}</b><span>das feitas: ${med(feitas)} (${feitas.length})</span></div>`;
+      return `<div class="kpi"><span>${esc(n)} · ${dele.length} OS${ehMeta ? ` da meta (${MGPlanilha.META_OS.rotulo})` : ''}</span><b>${med(dele)}</b><span>das feitas: ${med(feitas)} (${feitas.length})${ehMeta && todas.length !== dele.length ? ` · ${todas.length - dele.length} fora do período` : ''}</span></div>`;
     }).join('');
   }
 
@@ -894,10 +895,13 @@ window.MGAbas = (function () {
     if (probs.length) {
       // % = média do preenchimento (conjunto, item, problema, solução) das OS dele no SGMAN, igual ao TOTAL da aba OS
       const nota = l => Math.min(l.linhasCom.length, 4) / 4;
-      const agora = doMant.length ? Math.round(doMant.reduce((a, l) => a + nota(l), 0) / doMant.length * 100) : 0;
+      const ehMeta = mesmoNome(SG.mant, MGPlanilha.META_OS.nome);
+      const naMeta = l => { const d = l.prog || l.ini || l.ter || ''; return !d || (d >= MGPlanilha.META_OS.de && d <= MGPlanilha.META_OS.ate); };
+      const base = ehMeta ? doMant.filter(naMeta) : doMant;
+      const agora = base.length ? Math.round(base.reduce((a, l) => a + nota(l), 0) / base.length * 100) : 0;
       const nome = String(SG.mant).trim().split(/\s+/)[0];
       const nomeBonito = nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
-      const itens = probs.slice().sort((a, b) => a.l.num - b.l.num).map(({ l }) => {
+      const itens = probs.filter(x => !ehMeta || naMeta(x.l)).slice().sort((a, b) => a.l.num - b.l.num).map(({ l }) => {
         const f = [];
         if (norm(l.st) !== 'CONCLUIDA') f.push('fechar');
         if (!l.com) f.push(f.length ? 'comentário' : 'falta comentário');
@@ -905,7 +909,7 @@ window.MGAbas = (function () {
         return `• ${l.num}: ${f.join(' + ')}`;
       });
       const msg = `${nomeBonito}, OS pendentes no SGMAN:\n${itens.join('\n')}\nComentário: conjunto / item / problema / solução (1 por linha).\nHoje: ${agora}% → ${100}% após ajustar.`;
-      h += `<div style="margin:8px 0 12px"><b>Mensagem para o mantenedor</b> <span class="muted">· % = média do preenchimento do comentário (conjunto, item, problema e solução) das ${nf(doMant.length)} OS dele no arquivo</span>
+      h += `<div style="margin:8px 0 12px"><b>Mensagem para o mantenedor</b> <span class="muted">· % = média do preenchimento do comentário (conjunto, item, problema e solução) das ${nf(base.length)} OS dele no arquivo${ehMeta ? ' dentro da meta (' + MGPlanilha.META_OS.rotulo + ')' : ''}</span>
         <textarea id="sgMsg" rows="${Math.min(itens.length + 3, 16)}" style="display:block;width:100%;max-width:560px;margin-top:6px;font:13px var(--mono, monospace)">${esc(msg)}</textarea>
         <button class="btn small" data-act="copiar-msg" type="button" style="margin-top:6px">Copiar mensagem</button></div>`;
     }
@@ -1034,6 +1038,8 @@ window.MGAbas = (function () {
       <label>Feitas <select id="oFeitas"><option value="">Todas</option><option>SIM</option><option>NÃO</option><option value="_vazio">Sem resposta</option></select></label>
       <label>Ordenar por <select id="oOrdem">${OS_ORDENS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
       <button class="btn small" id="oDir" type="button" title="Inverter a ordem">↑ Crescente</button>
+      <label>Data <select id="oDataTipo"><option value="prog">programada</option><option value="abert">de abertura</option></select></label>
+      <label>de <input type="date" id="oDe"></label><label>até <input type="date" id="oAte"></label>
       <label>Buscar <input id="oBusca" type="search" placeholder="nº, descrição, nota…" style="width:170px"></label>
       <span class="os-dens" id="oDens" role="group" aria-label="Espessura da lista"><button type="button" data-d="fina">☰ Fina</button><button type="button" data-d="espessa">▤ Espessa</button></span>
       <span class="muted" id="oResumo"></span>
@@ -1050,13 +1056,19 @@ window.MGAbas = (function () {
       <span class="muted">· clique numa barra para filtrar</span></div>
       <div id="oParetoLista"></div>
     </details>
+    <div id="oQb"></div>
     <div id="oSg"></div>
     <div id="oLista" class="os-lista"></div>`;
   }
 
   function osFiltradas(exceto) {
     const fM = $('oMant').value, fF = $('oFeitas').value, b = norm(OF.busca);
+    const de = $('oDe').value, ate = $('oAte').value, tipo = $('oDataTipo').value;
     return O.linhas.filter(o => {
+      if (de || ate) {
+        const d = String((tipo === 'abert' ? o.data_abertura : (o.data || o.data_abertura)) || '').slice(0, 10);
+        if (!d || (de && d < de) || (ate && d > ate)) return false;
+      }
       if (fM && chave(o.mantenedor) !== fM && !participantes(o).some(p => chave(p) === fM)) return false;
       if (fF && (fF === '_vazio' ? txt(o.feitas) : norm(o.feitas) !== norm(fF))) return false;
       for (const [k] of CIPS) {
@@ -1110,16 +1122,19 @@ window.MGAbas = (function () {
   const DENS = { v: (() => { try { return localStorage.getItem('mg-os-densidade') || 'espessa'; } catch (e) { return 'espessa'; } })() };
   function cartaoOS(o) {
     const pct = MGPlanilha.totalOS(o), pctTx = Math.round(pct * 100) + '%';
-    const meta = [o.ordem_grupo != null ? 'Pendência ' + o.ordem_grupo : '', txt(o.aberta_por) ? 'aberta por ' + o.aberta_por : '', o.data_abertura ? 'em ' + dBR(o.data_abertura) : ''].filter(Boolean).join(' · ');
+    const as = apontsDe(o);
+    const meta = [o.ordem_grupo != null ? 'Pendência ' + o.ordem_grupo : '', txt(o.aberta_por) ? 'aberta por ' + o.aberta_por : '', o.data_abertura ? 'em ' + dBR(o.data_abertura) : '',
+      as.length ? 'quebra ' + qbResumo(as[0]) + (as.length > 1 ? ` (+${as.length - 1})` : '') : ''].filter(Boolean).join(' · ');
+    const naoCriada = o.numero ? '' : '<span class="pill turno_anterior" title="Só conta como criada no SGMAN quando tiver o nº da OS">não criada no SGMAN</span>';
     const cips = CIPS.map(([k, n]) => {
       const v = padV(o, k), orig = txt(o[k]);
       return `<span class="os-c ${orig ? '' : 'falta'}" title="${esc(n + ': ' + (v || 'falta') + (txt(o[k + '_p']) ? ' (escrito pelo mantenedor: ' + (orig || 'vazio') + ')' : ''))}"><small>${n}${txt(o[k + '_p']) ? ' <i>≈</i>' : ''}</small>${v ? esc(v) : '<em>falta</em>'}</span>`;
     }).join('');
-    const num = `<span class="os-num">${o.numero ? 'OS ' + o.numero : 'sem nº'}</span>`;
+    const num = o.numero ? `<span class="os-num">OS ${o.numero}</span>` : `<span class="os-num semnum" title="Não criada no SGMAN: falta o nº da OS">sem nº</span>`;
     const nota = txt(o.nota) ? `<span class="os-nota" title="${esc(o.nota)}">${esc(o.nota)}</span>` : '';
     if (DENS.v === 'fina') {
       return `<article class="os-card fina" data-id="${o.id}" tabindex="0" title="${esc(meta)}">
-        ${num}<span class="os-tit1">${nota}${esc(o.descricao || '(sem descrição)')}</span>
+        ${num}<span class="os-data1" title="${o.data ? 'Data programada' : 'Data de abertura'}">${dBR(o.data || o.data_abertura || '') || '—'}</span><span class="os-tit1">${nota}${esc(o.descricao || '(sem descrição)')}</span>
         <span class="os-tags1">${tagsHTML(o)}</span><span class="os-cips1">${cips}</span>
         ${feitaBtn(o)}<span class="os-pct ${pctClasse(pct)}">${pctTx}</span></article>`;
     }
@@ -1128,7 +1143,7 @@ window.MGAbas = (function () {
         ${meta ? `<div class="os-meta">${esc(meta)}</div>` : ''}
         <div class="os-tit">${num} ${esc(o.descricao || '(sem descrição)')}</div>
         ${nota}
-        <div class="os-linha">${tagsHTML(o)}${o.data ? `<span class="muted">prog. ${dBR(o.data)}</span>` : ''}${o.numero ? sgPill(o) : ''}</div>
+        <div class="os-linha">${tagsHTML(o)}${o.data ? `<span class="muted">prog. ${dBR(o.data)}</span>` : ''}${o.numero ? sgPill(o) : naoCriada}</div>
       </div>
       <div class="os-cips">${cips}</div>
       <div class="os-dir"><span class="os-pct ${pctClasse(pct)}">${pctTx}</span>${feitaBtn(o)}</div>
@@ -1144,9 +1159,10 @@ window.MGAbas = (function () {
     osPareto(regs);
     $('oLista').className = 'os-lista ' + DENS.v;
     document.querySelectorAll('#oDens button').forEach(b => b.classList.toggle('on', b.dataset.d === DENS.v));
-    $('oLista').innerHTML = regs.length ? (DENS.v === 'fina' ? '<div class="os-cab"><span>Nº</span><span>Descrição</span><span>Mantenedores</span><span class="os-cips1"><span>Conjunto</span><span>Item</span><span>Problema</span><span>Solução</span></span><span>Feita</span><span>%</span></div>' : '')
+    $('oLista').innerHTML = regs.length ? (DENS.v === 'fina' ? '<div class="os-cab"><span>Nº</span><span>Data</span><span>Descrição</span><span>Mantenedores</span><span class="os-cips1"><span>Conjunto</span><span>Item</span><span>Problema</span><span>Solução</span></span><span>Feita</span><span>%</span></div>' : '')
       + regs.map(cartaoOS).join('') : '<p class="muted card">Nenhuma OS com esses filtros.</p>';
     if (OS_JAN) OS_JAN.atualizar();
+    qbRender();
   }
 
   /* ---------- quadro de uma OS ---------- */
@@ -1198,6 +1214,7 @@ window.MGAbas = (function () {
           <div style="min-width:0">
             <div class="os-meta">${esc([o.ordem_grupo != null ? 'Pendência ' + o.ordem_grupo : 'Sem pendência', txt(o.aberta_por) ? 'aberta por ' + o.aberta_por : '', o.data_abertura ? 'em ' + dBR(o.data_abertura) : ''].filter(Boolean).join(' · '))}</div>
             <h3><span class="os-num">${o.numero ? 'OS ' + o.numero : 'OS sem nº'}</span> ${esc(o.descricao || '')}</h3>
+            ${o.numero ? '' : '<div><span class="pill turno_anterior">não criada no SGMAN</span> <span class="muted">coloque o nº da OS quando ela for aberta lá</span></div>'}
             ${s ? `<div class="muted">SGMAN: ${sgPill(o)} ${esc(s.ex || '')}${s.ter ? ' · terminou ' + dBR(s.ter) : ''}</div>` : ''}
           </div>
           <div class="os-pct ${pctClasse(pct)}">${Math.round(pct * 100)}%</div>
@@ -1218,6 +1235,7 @@ window.MGAbas = (function () {
             ${dona ? '<input id="osNovoPart" list="osNomes" placeholder="outro nome + Enter" style="width:170px">' : ''}</div></div>
           <datalist id="osNomes">${nomes.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
         </div>
+        ${qbBlocoModal(o)}
         <div class="os-bloco"><b>Conjunto, item, problema e solução</b>
           <p class="muted" style="margin:2px 0 6px">À esquerda, o que o mantenedor escreveu no comentário (não é alterado). À direita, o nome padronizado que você quer usar nos filtros e no pareto; deixe vazio para usar o original.</p>
           <table class="os-cips-tab"><thead><tr><th></th><th>Comentário do mantenedor</th><th>Padronizado</th></tr></thead><tbody>
@@ -1268,6 +1286,7 @@ window.MGAbas = (function () {
     jan.addEventListener('click', async e => {
       if (!dona) return;
       const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.desligar) { if (await salvarOS(o, { apontamentos: apontsDe(o).filter(a => String(a.id) !== b.dataset.desligar) }, 'Quebra desligada da OS')) desenhar(); return; }
       if (b.dataset.orig) { editOrig.add(b.dataset.orig); desenhar(); const t = jan.querySelector(`textarea[data-k="${b.dataset.orig}"]`); if (t) t.focus(); return; }
       if (b.hasAttribute('data-feita')) { if (await salvarOS(o, { feitas: norm(o.feitas) === 'SIM' ? 'NÃO' : 'SIM' })) desenhar(); return; }
       if (b.dataset.part) {
@@ -1286,6 +1305,140 @@ window.MGAbas = (function () {
     const p = jan.querySelector('input:not([disabled]),textarea:not([disabled])'); if (p && !o.descricao) p.focus();
   }
 
+  /* ---------- quebras de máquina dos apontamentos → OS ---------- */
+  // Cada OS pode ter "apontamentos": [{ id:'nreg' ou 'nreg-parte', nreg, parte, inicio, fim, min, turno, ... }]
+  const QB = { lista: null, ignor: [], periodo: 90, erro: null, carregando: false, verIgn: false };
+  const ehQuebraSub = s => norm(s) === 'QUEBRA DE MAQUINA';
+  const TZ = 'America/Sao_Paulo';
+  const dLocal = s => new Date(String(s).replace(' ', 'T').slice(0, 19) + '-03:00');
+  const hBR = d => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
+  const dIso = d => d.toLocaleDateString('sv-SE', { timeZone: TZ });
+  const apontsDe = o => Array.isArray(o.apontamentos) ? o.apontamentos : [];
+  const qbResumo = a => `${dBR(a.data)} ${a.hi}–${a.hf} · ${a.min} min${a.turno ? ' · turno ' + a.turno : ''}`;
+
+  async function qbCarregar() {
+    if (QB.carregando) return; QB.carregando = true; QB.erro = null; qbRender();
+    try {
+      const [cl, div, cfg] = await Promise.all([
+        MG.buscarTudo('classificacao', 'nreg,programada,subgrupo', q => q.not('subgrupo', 'is', null)),
+        MG.buscarTudo('divisoes', '*', null, ['nreg', 'parte']).catch(() => []),
+        sb.from('configuracao').select('valor').eq('chave', 'quebras_sem_os').maybeSingle().then(r => (r.data && r.data.valor) || {}).catch(() => ({}))]);
+      QB.ignor = (cfg.ignoradas || []).map(String);
+      const clM = new Map(cl.map(c => [c.nreg, c]));
+      const dv = new Map(); div.forEach(p => { if (!dv.has(p.nreg)) dv.set(p.nreg, []); dv.get(p.nreg).push(p); });
+      const nregs = [...new Set([...cl.filter(c => ehQuebraSub(c.subgrupo)).map(c => c.nreg), ...div.filter(p => ehQuebraSub(p.subgrupo)).map(p => p.nreg)])];
+      const col = [], aj = new Map();
+      for (let i = 0; i < nregs.length; i += 200) {
+        const parte = nregs.slice(i, i + 200);
+        const [r1, r2] = await Promise.all([
+          sb.from('coletor').select('nreg,data_hora,hora_anterior,t_ciclo_s,idturno,menuid,oee_operador,conjunto,item,problema,solucao,observacao').in('nreg', parte),
+          sb.from('ajustes').select('nreg,conjunto,item,problema,solucao,obs').in('nreg', parte)]);
+        if (r1.error) throw new Error(r1.error.message);
+        col.push(...(r1.data || [])); (r2.data || []).forEach(a => aj.set(a.nreg, a));
+      }
+      const ev = [];
+      for (const l of col) {
+        if (l.menuid === 99999 || String(l.hora_anterior || '').startsWith('06:00:00') || !(l.t_ciclo_s > 0) || !l.data_hora) continue;
+        const c = clM.get(l.nreg) || {}, a = aj.get(l.nreg) || {};
+        const fim = dLocal(l.data_hora); let t0 = new Date(fim.getTime() - l.t_ciclo_s * 1000);
+        const partes = dv.get(l.nreg) && dv.get(l.nreg).length > 1 ? dv.get(l.nreg).sort((x, y) => x.parte - y.parte) : [null];
+        for (const p of partes) {
+          const seg = p ? p.segundos : l.t_ciclo_s, tf = new Date(t0.getTime() + seg * 1000);
+          if (ehQuebraSub(p ? p.subgrupo : c.subgrupo)) {
+            const v = k => txt(p && p[k] != null ? p[k] : a[k] != null ? a[k] : l[k]);
+            ev.push({ id: String(l.nreg) + (p ? '-' + p.parte : ''), nreg: l.nreg, parte: p ? p.parte : null, data: dIso(t0), inicio: t0.toISOString(), fim: tf.toISOString(),
+              hi: hBR(t0), hf: hBR(tf), min: Math.max(1, Math.round(seg / 60)), turno: ['', 'A', 'B', 'C'][l.idturno] || (l.idturno ? String(l.idturno) : ''),
+              operador: txt(l.oee_operador), conjunto: v('conjunto'), item: v('item'), problema: v('problema'), solucao: v('solucao'),
+              obs_operador: txt(l.observacao), minha_obs: txt(p ? p.obs : a.obs) });
+          }
+          t0 = tf;
+        }
+      }
+      QB.lista = ev.sort((x, y) => y.inicio.localeCompare(x.inicio));
+    } catch (e) { QB.erro = e.message; QB.lista = QB.lista || []; }
+    QB.carregando = false; qbRender();
+  }
+
+  function qbPendentes() {
+    if (!QB.lista) return [];
+    const ligados = new Set(O.linhas.flatMap(o => apontsDe(o).map(a => String(a.id))));
+    const ign = new Set(QB.ignor);
+    const limite = QB.periodo ? new Date(Date.now() - QB.periodo * 864e5).toISOString() : '';
+    return QB.lista.filter(e => !ligados.has(e.id) && (QB.verIgn ? ign.has(e.id) : !ign.has(e.id)) && e.inicio >= limite);
+  }
+  function qbTexto(e) {
+    const ci = [e.conjunto, e.item].filter(Boolean).join(' › ');
+    return [ci, e.problema, e.solucao ? 'solução: ' + e.solucao : '', e.obs_operador ? 'operador: ' + e.obs_operador : '', e.minha_obs ? 'sua obs.: ' + e.minha_obs : ''].filter(Boolean).join(' · ');
+  }
+  function qbRender() {
+    const el = $('oQb'); if (!el) return;
+    if (!QB.lista) { el.innerHTML = QB.carregando ? '<div class="card muted">Procurando quebras de máquina nos apontamentos…</div>' : ''; return; }
+    const pend = qbPendentes(), dona = CTX.dona;
+    const nIgn = QB.ignor.length;
+    const abertas = O.linhas.filter(o => !o.numero && apontsDe(o).length).length;
+    const opcOS = O.linhas.slice().sort((a, b) => String(b.data_abertura || '').localeCompare(String(a.data_abertura || '')) || b.id - a.id)
+      .map(o => `<option value="${o.id}">${o.numero ? 'OS ' + o.numero : 'sem nº'} · ${esc((o.descricao || '').slice(0, 50))}</option>`).join('');
+    el.innerHTML = `<details class="card os-qb" ${pend.length && !QB.verIgn ? 'open' : ''} ${QB.verIgn ? 'open' : ''}>
+      <summary><b>Quebras de máquina nos apontamentos ${QB.verIgn ? 'marcadas como "não precisa de OS"' : 'sem OS'}</b>
+        <span class="pill ${pend.length && !QB.verIgn ? 'pendente' : 'na'}">${nf(pend.length)}</span>
+        ${abertas ? `<span class="muted"> · ${nf(abertas)} OS criadas daqui ainda sem nº do SGMAN</span>` : ''}</summary>
+      <div class="barra" style="margin:8px 0">
+        <label>Período <select id="qbPeriodo">${[[30, 'últimos 30 dias'], [90, 'últimos 90 dias'], [365, 'último ano'], [0, 'tudo']].map(([v, n]) => `<option value="${v}" ${QB.periodo === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <button class="btn small" type="button" data-qb="ver-ign">${QB.verIgn ? 'Voltar às quebras sem OS' : `Ver as marcadas como "não precisa" (${nf(nIgn)})`}</button>
+        <button class="btn small" type="button" data-qb="recarregar">Recarregar</button>
+        <span class="muted">A OS criada aqui fica "não criada no SGMAN" até você colocar o nº da OS. O mantenedor ainda precisa preencher o comentário (conjunto, item, problema e solução).</span>
+      </div>
+      ${QB.erro ? `<p style="color:var(--bad)">Erro ao ler os apontamentos: ${esc(QB.erro)}</p>` : ''}
+      ${pend.length ? `<div class="os-qb-lista">${pend.map(e => `<div class="os-qb-l" data-qid="${esc(e.id)}">
+          <div><b>${dBR(e.data)} ${e.hi}–${e.hf}</b> <span class="muted">· ${e.min} min${e.turno ? ' · turno ' + e.turno : ''} · apontamento nº ${e.nreg}${e.parte ? ' (parte ' + e.parte + ')' : ''}</span>
+            <div class="os-qb-tx">${esc(qbTexto(e)) || '<span class="muted">sem descrição no apontamento</span>'}</div></div>
+          ${dona ? `<div class="os-qb-ac">${QB.verIgn ? '<button class="btn small" type="button" data-qb="designorar">Voltar para a lista</button>'
+            : `<button class="btn small primary" type="button" data-qb="criar">Criar OS</button>
+              <select data-qb="vincular" title="Esta quebra já tem OS"><option value="">Já tem OS…</option>${opcOS}</select>
+              <button class="btn small" type="button" data-qb="ignorar" title="Não precisa de OS">Não precisa</button>`}</div>` : ''}
+        </div>`).join('')}</div>` : `<p class="muted">${QB.verIgn ? 'Nenhuma.' : 'Todas as quebras de máquina do período já têm OS.'}</p>`}
+    </details>`;
+  }
+  async function qbSalvarIgn() {
+    const { error } = await sb.from('configuracao').upsert({ chave: 'quebras_sem_os', valor: { ignoradas: QB.ignor } }, { onConflict: 'chave' });
+    if (error) CTX.erro('Erro ao salvar: ' + error.message);
+  }
+  async function qbAcao(e) {
+    const alvo = e.target.closest('[data-qb]'); if (!alvo) return;
+    const act = alvo.dataset.qb;
+    if (e.type === 'click' && alvo.tagName === 'SELECT') return;
+    if (act === 'recarregar') { qbCarregar(); return; }
+    if (act === 'ver-ign') { QB.verIgn = !QB.verIgn; qbRender(); return; }
+    if (!CTX.dona) return;
+    const linha = alvo.closest('[data-qid]'), ev = linha && QB.lista.find(x => x.id === linha.dataset.qid); if (!ev) return;
+    if (act === 'ignorar') { QB.ignor = [...new Set([...QB.ignor, ev.id])]; await qbSalvarIgn(); qbRender(); CTX.aviso('Marcada como "não precisa de OS"'); return; }
+    if (act === 'designorar') { QB.ignor = QB.ignor.filter(x => x !== ev.id); await qbSalvarIgn(); qbRender(); return; }
+    if (act === 'vincular') {
+      const o = O.linhas.find(x => String(x.id) === alvo.value); if (!o) return;
+      await salvarOS(o, { apontamentos: [...apontsDe(o), ev] }, `Quebra ligada à ${o.numero ? 'OS ' + o.numero : 'OS sem nº'}`);
+      return;
+    }
+    if (act === 'criar') {
+      alvo.disabled = true;
+      const ci = [ev.conjunto, ev.item].filter(Boolean).join(' › ');
+      const desc = [ci, ev.problema].filter(Boolean).join(' — ') || ev.obs_operador || 'Quebra de máquina';
+      const pos = O.linhas.reduce((a, o) => Math.max(a, o.posicao || 0), 0) + 1;
+      const { data, error } = await sb.from('os').insert({ posicao: pos, data_abertura: ev.data, descricao: desc, apontamentos: [ev] }).select();
+      alvo.disabled = false;
+      if (error) { CTX.erro('Erro ao criar a OS: ' + error.message); return; }
+      O.linhas.push(data[0]); osRender(); CTX.aviso('OS criada no site. Coloque o nº quando ela for aberta no SGMAN.');
+      osAbrir(data[0]);
+    }
+  }
+  function qbBlocoModal(o) {
+    const as = apontsDe(o); if (!as.length) return '';
+    return `<div class="os-bloco"><b>Quebras de máquina ligadas a esta OS</b>
+      ${as.map(a => `<div class="os-qb-l"><div><b>${qbResumo(a)}</b> <span class="muted">· apontamento nº ${a.nreg}${a.parte ? ' (parte ' + a.parte + ')' : ''}</span>
+        <div class="os-qb-tx">${esc(qbTexto(a)) || '<span class="muted">sem descrição no apontamento</span>'}</div></div>
+        ${CTX.dona ? `<div class="os-qb-ac"><button type="button" class="btn small" data-desligar="${esc(a.id)}">Desligar</button></div>` : ''}</div>`).join('')}
+      <p class="muted" style="margin:4px 0 0">O que está acima é o que foi escrito no apontamento; o comentário do mantenedor no SGMAN continua sendo o que vale para o %.</p></div>`;
+  }
+
   function osIniciar() {
     $('sec-os').innerHTML = osHTML();
     $('oMant').addEventListener('change', osRender);
@@ -1293,6 +1446,7 @@ window.MGAbas = (function () {
     $('oOrdem').addEventListener('change', () => { ORD.k = $('oOrdem').value; ORD.dir = 1; guardarOrdem(); osRender(); });
     $('oDir').addEventListener('click', () => { ORD.dir = -ORD.dir; guardarOrdem(); osRender(); });
     $('oDens').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; DENS.v = b.dataset.d; try { localStorage.setItem('mg-os-densidade', DENS.v); } catch (er) { } osRender(); });
+    ['oDataTipo', 'oDe', 'oAte'].forEach(id => $(id).addEventListener('change', osRender));
     let tBusca = null;
     $('oBusca').addEventListener('input', e => { clearTimeout(tBusca); tBusca = setTimeout(() => { OF.busca = e.target.value; osRender(); }, 200); });
     $('oFiltrosCips').addEventListener('change', e => { const k = e.target.dataset.nivel; if (!k) return; OF[k] = e.target.value; osRender(); });
@@ -1305,6 +1459,11 @@ window.MGAbas = (function () {
     $('oSgBtn').addEventListener('click', () => { $('oSgArq').value = ''; $('oSgArq').click(); });
     $('oSgArq').addEventListener('change', e => { const f = e.target.files[0]; if (f) sgLerArquivo(f); });
     $('oSg').addEventListener('click', sgClique);
+    $('oQb').addEventListener('click', qbAcao);
+    $('oQb').addEventListener('change', e => {
+      if (e.target.id === 'qbPeriodo') { QB.periodo = Number(e.target.value); qbRender(); return; }
+      if (e.target.dataset.qb === 'vincular' && e.target.value) qbAcao(e);
+    });
     $('oSg').addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) SG.abertos[d.dataset.sec] = d.open; }, true);
     $('oNova').addEventListener('click', async () => {
       const btn = $('oNova'); if (btn.disabled) return; btn.disabled = true;
