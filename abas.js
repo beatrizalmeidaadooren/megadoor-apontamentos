@@ -662,7 +662,12 @@ window.MGAbas = (function () {
     ['ordem_grupo', 'ID', 'num', 70], ['aberta_por', 'Aberta por', 'txt', 110], ['data_abertura', 'Data', 'date'], ['numero', 'Nº OS', 'num', 80],
     ['descricao', 'Descrição', 'area', 220], ['nota', 'Nota', 'txt', 140], ['mantenedor', 'Mantenedor', 'txt', 130], ['data', 'Data', 'date'],
     ['feitas', 'Feitas', 'sel'], ['conjunto', 'Conjunto', 'area', 140], ['item', 'Item', 'area', 120], ['problema', 'Problema', 'area', 180],
-    ['solucao', 'Solução', 'area', 200], ['observacoes', 'Observações', 'area', 160], ['_total', 'Total', 'calc'], ['analise', 'Análise', 'area', 200]];
+    ['solucao', 'Solução', 'area', 200], ['observacoes', 'Observações', 'area', 160], ['_total', 'Total', 'calc'], ['_sgman', 'SGMAN', 'sg'], ['analise', 'Análise', 'area', 200]];
+  const OS_ORDENS = [['posicao', 'Ordem da lista (manual)'], ['numero', 'Nº OS'], ['data', 'Data (programada)'], ['data_abertura', 'Data de abertura'],
+    ['ordem_grupo', 'ID (pendência)'], ['mantenedor', 'Mantenedor'], ['feitas', 'Feitas'], ['_total', 'Total'], ['_sgman', 'Status no SGMAN'],
+    ['descricao', 'Descrição'], ['conjunto', 'Conjunto'], ['atualizado_em', 'Última alteração']];
+  const ORD = (() => { try { const o = JSON.parse(localStorage.getItem('mg-os-ordem') || 'null'); if (o && OS_ORDENS.some(x => x[0] === o.k)) return o; } catch (e) { } return { k: 'posicao', dir: 1 }; })();
+  const guardarOrdem = () => { try { localStorage.setItem('mg-os-ordem', JSON.stringify(ORD)); } catch (e) { } };
   const chave = n => norm(n).replace(/\s+/g, ' ');
 
   function osHTML() {
@@ -674,16 +679,21 @@ window.MGAbas = (function () {
     <div class="barra">
       <label>Mantenedor <select id="oMant"><option value="">Todos</option></select></label>
       <label>Feitas <select id="oFeitas"><option value="">Todas</option><option>SIM</option><option>NÃO</option><option value="_vazio">Sem resposta</option></select></label>
+      <label>Ordenar por <select id="oOrdem">${OS_ORDENS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
+      <button class="btn small" id="oDir" type="button" title="Inverter a ordem">↑ Crescente</button>
       <span class="muted" id="oResumo"></span>
+      <button class="btn small" id="oSgBtn" type="button">Conferir com o SGMAN</button>
+      <input type="file" id="oSgArq" accept=".xlsx,.xls" hidden>
       <button class="btn small primary" id="oNova" type="button" hidden>Nova OS</button>
     </div>
+    <div id="oSg"></div>
     <p class="muted" style="margin:0 0 8px">Teclado: setas andam entre as células (nos textos, ← → saem da célula no começo/fim do texto e ↑ ↓ na primeira/última linha). Tab também funciona.</p>
     <div class="scroll"><table id="oTabela"></table></div>`;
   }
 
   async function osCarregar() {
     $('oResumo').textContent = 'Carregando…';
-    try { O.linhas = await MG.buscarTudo('os', '*', null, 'id'); osRender(); }
+    try { O.linhas = await MG.buscarTudo('os', '*', null, 'id'); await sgCarregarConfig(); osRender(); }
     catch (e) { CTX.erro('Erro ao carregar as OS: ' + e.message); $('oResumo').textContent = ''; }
   }
 
@@ -706,15 +716,19 @@ window.MGAbas = (function () {
     osKpis();
     const fM = $('oMant').value, fF = $('oFeitas').value;
     const regs = O.linhas.filter(o => (!fM || chave(o.mantenedor) === fM) && (!fF || (fF === '_vazio' ? !txt(o.feitas) : norm(o.feitas) === norm(fF))))
-      .sort((a, b) => (a.posicao || 1e9) - (b.posicao || 1e9) || a.id - b.id);
+.sort(osComparar);
     $('oResumo').textContent = `${nf(regs.length)} OS`;
     $('oNova').hidden = !CTX.dona;
     const ed = CTX.dona ? '' : 'disabled';
-    let h = `<thead><tr>${OS_COLS.map(c => `<th>${c[1]}</th>`).join('')}${CTX.dona ? '<th></th>' : ''}</tr></thead><tbody>`;
+    $('oOrdem').value = ORD.k; $('oDir').textContent = ORD.dir > 0 ? '↑ Crescente' : '↓ Decrescente';
+    const seta = k => { const kk = k === 'data_abertura' ? 'data_abertura' : k; return ORD.k === kk ? (ORD.dir > 0 ? ' ▲' : ' ▼') : ''; };
+    let h = `<thead><tr>${OS_COLS.map(c => OS_ORDENS.some(o => o[0] === c[0])
+      ? `<th class="o-ord" data-ord="${c[0]}" style="cursor:pointer" title="Ordenar por esta coluna">${c[1]}${seta(c[0])}</th>` : `<th>${c[1]}</th>`).join('')}${CTX.dona ? '<th></th>' : ''}</tr></thead><tbody>`;
     for (const o of regs) {
       h += `<tr data-id="${o.id}">` + OS_COLS.map(([k, , tipo, w]) => {
         const v = o[k];
         if (tipo === 'calc') return `<td class="num"><b>${Math.round(MGPlanilha.totalOS(o) * 100)}%</b></td>`;
+        if (tipo === 'sg') return `<td>${sgPill(o)}</td>`;
         if (tipo === 'sel') return `<td><select data-k="${k}" ${ed}>${['', 'SIM', 'NÃO'].map(x => `<option ${norm(v) === norm(x) ? 'selected' : ''}>${x}</option>`).join('')}</select></td>`;
         if (tipo === 'date') return `<td><input type="date" data-k="${k}" value="${esc(v || '')}" ${ed}></td>`;
         if (tipo === 'num') return `<td><input type="number" data-k="${k}" value="${v == null ? '' : v}" ${ed} style="width:${w}px"></td>`;
@@ -728,12 +742,332 @@ window.MGAbas = (function () {
     if (GO) GO.restaurar(foco);
   }
 
+  /* =================== OS: ordenação e conferência com o SGMAN =================== */
+  // SG.ultimo = último arquivo do SGMAN lido (status de cada OS, para a coluna SGMAN)
+  // SG.dec = escolhas já feitas: { '<nº>': { campo: valor do SGMAN que você decidiu NÃO usar } , __ignoradas: [nº…] }
+  const SG = { ultimo: null, dec: { __ignoradas: [] }, conf: null, abertos: {}, mant: 'DOUGLAS', linhas: null, arquivo: '' };
+  const ST_ORDEM = { 'ATRASADA': 1, 'EM ANDAMENTO ATRASADA': 2, 'ABERTA': 3, 'EM ANDAMENTO': 4, 'CONCLUIDA': 5 };
+  const SG_CAMPOS = [['descricao', 'Descrição'], ['mantenedor', 'Mantenedor'], ['data', 'Data (programada)'], ['feitas', 'Feitas'],
+    ['ordem_grupo', 'ID (pendência)'], ['conjunto', 'Conjunto'], ['item', 'Item'], ['problema', 'Problema'], ['solucao', 'Solução']];
+  const PARTES = ['conjunto', 'item', 'problema', 'solução'];
+  const SG_PARADA = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'QUE', 'PARA', 'COM', 'NA', 'NO', 'EM', 'UM', 'UMA', 'ESTA', 'ESTAO', 'SEM', 'POR', 'NAO', 'MAIS', 'FOI']);
+  const limpaTxt = v => v == null ? '' : String(v).replace(/_x000d_/gi, '').replace(/\r/g, '');
+  const cmpTxt = v => norm(limpaTxt(v));
+
+  async function sgCarregarConfig() {
+    try {
+      const { data } = await sb.from('configuracao').select('chave,valor').in('chave', ['sgman_ultimo', 'sgman_decisoes']);
+      (data || []).forEach(r => { if (r.chave === 'sgman_ultimo') SG.ultimo = r.valor; else SG.dec = Object.assign({ __ignoradas: [] }, r.valor || {}); });
+    } catch (e) { /* sem configuração: segue sem a coluna SGMAN */ }
+  }
+  async function sgSalvarConfig(chave, valor) {
+    if (!CTX.dona) return;
+    const { error } = await sb.from('configuracao').upsert({ chave, valor }, { onConflict: 'chave' });
+    if (error) CTX.erro('Erro ao salvar no sistema: ' + error.message);
+  }
+
+  function sgStatus(o) {
+    if (!o.numero || !SG.ultimo || !SG.ultimo.os) return null;
+    return SG.ultimo.os[o.numero] || null;
+  }
+  function sgPill(o) {
+    if (!o.numero) return '<span class="pill na" title="Ainda sem número de OS">sem nº</span>';
+    const s = sgStatus(o);
+    if (!s) {
+      if (!SG.ultimo) return '';
+      if (SG.ultimo.min && o.numero < SG.ultimo.min) return '<span class="pill na" title="O último arquivo do SGMAN não chega até essa OS">fora do arquivo</span>';
+      return '<span class="pill pendente" title="Não estava no último arquivo do SGMAN">não está</span>';
+    }
+    const k = norm(s.st), cls = k === 'CONCLUIDA' ? 'apontado' : /ATRASADA/.test(k) ? 'pendente' : 'turno_anterior';
+    return `<span class="pill ${cls}" title="${esc(s.ex || '')}${s.ter ? ' · terminou ' + dBR(s.ter) : ''}">${esc(s.st)}</span>`;
+  }
+
+  function osValor(o, k) {
+    if (k === '_total') return MGPlanilha.totalOS(o);
+    if (k === '_sgman') { const s = sgStatus(o); return s ? (ST_ORDEM[norm(s.st)] || 9) : null; }
+    const v = o[k];
+    if (v == null || v === '') return null;
+    if (['numero', 'ordem_grupo', 'posicao'].includes(k)) return Number(v);
+    if (['data', 'data_abertura', 'atualizado_em'].includes(k)) return String(v);
+    return cmpTxt(v);
+  }
+  function osComparar(a, b) {
+    const va = osValor(a, ORD.k), vb = osValor(b, ORD.k);
+    if (va == null && vb != null) return 1;           // vazios sempre no fim
+    if (vb == null && va != null) return -1;
+    if (va != null && vb != null && va !== vb) return (typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'pt')) * ORD.dir;
+    return (a.posicao || 1e9) - (b.posicao || 1e9) || a.id - b.id;
+  }
+
+  /* ---------- leitura do arquivo exportado do SGMAN ---------- */
+  function sgCips(com) {
+    const linhas = limpaTxt(com).split('\n').map(l => l.trim()).filter(Boolean);
+    return { linhas, cips: linhas.length >= 4 ? { conjunto: linhas[0], item: linhas[1], problema: linhas[2], solucao: linhas.slice(3).join('\n') } : null };
+  }
+  async function sgLerArquivo(f) {
+    try {
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
+      const iCab = aoa.findIndex(r => r && r.some(c => norm(c) === 'ID') && r.some(c => norm(c) === 'DESCRICAO'));
+      if (iCab < 0) { CTX.erro('Não achei as colunas ID e Descrição. Use a lista exportada do SGMAN (.xlsx).'); return; }
+      const cab = aoa[iCab].map(norm), col = n => cab.indexOf(n);
+      const c = { id: col('ID'), desc: col('DESCRICAO'), tipo: col('TIPO'), ex: col('EXECUTANTE'), prog: col('DATA PROGRAMADA'), st: col('STATUS'),
+        ini: col('DATA INICIO'), ter: col('DATA TERMINO'), com: col('COMENTARIO'), pend: col('ID PENDENCIA'), local: col('LOCAL') };
+      const g = (r, i) => i < 0 ? null : r[i];
+      const linhas = [];
+      for (const r of aoa.slice(iCab + 1)) {
+        const num = Number(g(r, c.id)); if (!num) continue;
+        const com = limpaTxt(g(r, c.com)).trim();
+        const p = sgCips(com);
+        linhas.push({ num, desc: txt(limpaTxt(g(r, c.desc))), tipo: txt(g(r, c.tipo)) || '', ex: txt(g(r, c.ex)) ? String(g(r, c.ex)).replace(/\s+/g, ' ').trim() : '',
+          prog: paraISO(g(r, c.prog)), st: txt(g(r, c.st)) || '', ini: paraISO(g(r, c.ini)), ter: paraISO(g(r, c.ter)), com, linhasCom: p.linhas, cips: p.cips,
+          pend: g(r, c.pend) == null || g(r, c.pend) === '' ? null : Number(g(r, c.pend)), cil: /\bCIL\b/i.test(String(g(r, c.tipo) || '')) });
+      }
+      if (!linhas.length) { CTX.erro('O arquivo não tem OS.'); return; }
+      SG.linhas = linhas; SG.arquivo = f.name;
+      const semCil = linhas.filter(l => !l.cil), nums = linhas.map(l => l.num);
+      SG.ultimo = { em: new Date().toISOString(), arquivo: f.name, min: Math.min(...nums), max: Math.max(...nums), os: {} };
+      semCil.forEach(l => { SG.ultimo.os[l.num] = { st: l.st, ex: l.ex, ter: l.ter }; });
+      await sgSalvarConfig('sgman_ultimo', SG.ultimo);
+      sgConferir(); osRender();
+      $('oSg').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) { CTX.erro('Não consegui ler o arquivo: ' + e.message); }
+  }
+
+  /* ---------- comparação ---------- */
+  const tokensNome = n => norm(n).split(' ').filter(w => w.length > 1);
+  function mesmoNome(a, b) {
+    const ta = tokensNome(a), tb = tokensNome(b); if (!ta.length || !tb.length) return false;
+    const [cur, lon] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+    return cur.every(w => lon.includes(w));
+  }
+  function nomeNoSite(ex) {
+    const achado = O.linhas.map(o => o.mantenedor).find(m => m && mesmoNome(m, ex));
+    return achado ? String(achado).replace(/\s+/g, ' ').trim() : ex;
+  }
+  const palavras = s => new Set(norm(limpaTxt(s)).replace(/[^A-Z0-9 ]/g, ' ').split(' ').filter(w => w.length >= 3 && !SG_PARADA.has(w)));
+  function sgParecido(a, b) {
+    const A = palavras(a), B = palavras(b); if (!A.size || !B.size) return 0;
+    let n = 0; A.forEach(w => { if (B.has(w)) n++; });
+    return 2 * n / (A.size + B.size);
+  }
+  function valorSg(l, k) {
+    if (k === 'descricao') return l.desc;
+    if (k === 'mantenedor') return l.ex || null;
+    if (k === 'data') return l.prog;
+    if (k === 'feitas') return norm(l.st) === 'CONCLUIDA' ? 'SIM' : 'NÃO';
+    if (k === 'ordem_grupo') return l.pend;
+    return l.cips ? l.cips[k] : null;
+  }
+  function igual(k, site, sg) {
+    if (k === 'mantenedor') return mesmoNome(site, sg);
+    if (k === 'ordem_grupo') return Number(site) === Number(sg);
+    return cmpTxt(site) === cmpTxt(sg);
+  }
+
+  function sgConferir() {
+    const L = SG.linhas; if (!L) { SG.conf = null; return; }
+    const porNum = new Map(L.map(l => [l.num, l]));
+    const ign = new Set((SG.dec.__ignoradas || []).map(Number));
+    const numsSite = new Set(O.linhas.filter(o => o.numero).map(o => Number(o.numero)));
+    const conf = { mudancas: [], naoEncontradas: [], foraPeriodo: [], semNumero: [], soSgman: [], ignoradas: 0, conferidas: 0 };
+    for (const o of O.linhas) {
+      if (!o.numero) { if (txt(o.descricao)) conf.semNumero.push(o); continue; }
+      const l = porNum.get(Number(o.numero));
+      if (!l) { (o.numero < SG.ultimo.min ? conf.foraPeriodo : conf.naoEncontradas).push(o); continue; }
+      conf.conferidas++;
+      const dec = SG.dec[o.numero] || {}, campos = [];
+      for (const [k, rot] of SG_CAMPOS) {
+        const sv = valorSg(l, k); if (sv == null || sv === '') continue;
+        if (igual(k, o[k], sv)) continue;
+        if (k in dec && dec[k] === cmpTxt(sv)) continue;      // você já decidiu manter o do site
+        campos.push({ k, rot, site: o[k], sg: k === 'mantenedor' ? nomeNoSite(sv) : sv, vazio: o[k] == null || String(o[k]).trim() === '' });
+      }
+      if (campos.length) conf.mudancas.push({ o, l, campos });
+    }
+    const livres = L.filter(l => !l.cil && !numsSite.has(l.num));
+    for (const l of livres) { if (ign.has(l.num)) conf.ignoradas++; else conf.soSgman.push(l); }
+    conf.semNumero = conf.semNumero.map(o => ({ o, cand: livres.map(l => ({ l, p: sgParecido(o.descricao, l.desc) + (o.mantenedor && l.ex && mesmoNome(o.mantenedor, l.ex) ? .1 : 0) }))
+      .filter(x => x.p >= .25).sort((a, b) => b.p - a.p).slice(0, 3) }));
+    SG.conf = conf;
+    sgRender();
+  }
+
+  /* ---------- tela ---------- */
+  const sgMostra = (k, v) => v == null || String(v).trim() === '' ? '<span class="muted">(vazio)</span>'
+    : (k === 'data' ? dBR(String(v)) : esc(limpaTxt(v))).replace(/\n/g, '<br>');
+  const linhaSg = l => `<b>OS ${l.num}</b> · ${esc(l.desc || '')} <span class="muted">· ${esc(l.ex || 'sem executante')} · ${esc(l.st)}${l.prog ? ' · prog. ' + dBR(l.prog) : ''}</span>`;
+
+  function sgRender() {
+    const el = $('oSg'), C = SG.conf;
+    if (!C) { el.innerHTML = ''; return; }
+    const dona = CTX.dona, L = SG.linhas;
+    const nCil = L.filter(l => l.cil).length;
+    const ab = (k, padrao) => (k in SG.abertos ? SG.abertos[k] : padrao) ? 'open' : '';
+    let h = `<div class="card" style="border-left:4px solid var(--accent)">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
+        <h2 style="margin:0">Conferência com o SGMAN</h2>
+        <span class="muted">${esc(SG.arquivo)} · ${nf(L.length)} OS no arquivo (OS ${nf(SG.ultimo.min)} a ${nf(SG.ultimo.max)}) · ${nf(nCil)} Atividades de CIL ignoradas
+        <button class="btn small" data-act="fechar" type="button">Fechar</button></span>
+      </div>
+      <p class="muted" style="margin:6px 0 0">${nf(C.conferidas)} OS do site encontradas no SGMAN. ${dona ? '' : 'Só a dona do sistema pode aplicar mudanças.'}</p>`;
+
+    // 1. Mudanças
+    const nCampos = C.mudancas.reduce((a, m) => a + m.campos.length, 0);
+    h += `<details data-sec="dif" ${ab("dif", true)} style="margin-top:12px"><summary><b>Diferenças entre o site e o SGMAN</b> — ${nf(C.mudancas.length)} OS, ${nf(nCampos)} campos</summary>`;
+    if (!C.mudancas.length) h += '<p class="muted">Nenhuma diferença: tudo o que está no site bate com o SGMAN.</p>';
+    else {
+      h += `<p class="muted" style="margin:6px 0">Para cada campo, escolha qual valor manter. Quando o site está vazio, o SGMAN já vem marcado. Se escolher manter o do site, não pergunto de novo enquanto o SGMAN não mudar esse campo. Conjunto, Item, Problema e Solução vêm das 4 primeiras linhas do comentário.</p>`;
+      for (const m of C.mudancas) {
+        h += `<div class="sg-os" data-num="${m.o.numero}" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0">
+          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span>${linhaSg(m.l)}</span>
+          ${dona ? `<span><button class="btn small" data-act="tudo-sg" type="button">Tudo do SGMAN</button> <button class="btn small" data-act="tudo-site" type="button">Manter tudo do site</button></span>` : ''}</div>
+          <div class="scroll"><table style="margin-top:6px"><thead><tr><th>Campo</th><th>Manter</th><th>No site</th><th>No SGMAN</th></tr></thead><tbody>`;
+        for (const c of m.campos) {
+          const nome = `sg-${m.o.numero}-${c.k}`;
+          h += `<tr><td>${c.rot}</td><td style="white-space:nowrap">
+            <label><input type="radio" name="${nome}" value="site" ${dona ? '' : 'disabled'}> site</label>
+            <label style="margin-left:8px"><input type="radio" name="${nome}" value="sg" ${c.vazio ? 'checked' : ''} ${dona ? '' : 'disabled'}> SGMAN</label></td>
+            <td style="max-width:320px">${sgMostra(c.k, c.site)}</td><td style="max-width:320px">${sgMostra(c.k, c.sg)}</td></tr>`;
+        }
+        h += '</tbody></table></div></div>';
+      }
+      if (dona) h += '<button class="btn small primary" data-act="aplicar" type="button">Aplicar as escolhas</button> <span class="muted">Campos sem escolha continuam pendentes.</span>';
+    }
+    h += '</details>';
+
+    // 2. Conferência do mantenedor
+    const exs = [...new Set(L.filter(l => !l.cil && l.ex).map(l => l.ex))].sort((a, b) => a.localeCompare(b, 'pt'));
+    const doMant = L.filter(l => !l.cil && l.ex && mesmoNome(l.ex, SG.mant));
+    const probs = doMant.map(l => {
+      const p = [];
+      if (norm(l.st) !== 'CONCLUIDA') p.push(`não concluída (${esc(l.st)})`);
+      if (!l.com) p.push('sem comentário');
+      else if (l.linhasCom.length < 4) p.push('comentário incompleto: falta ' + PARTES.slice(l.linhasCom.length).join(', '));
+      return { l, p };
+    }).filter(x => x.p.length).sort((a, b) => b.l.num - a.l.num);
+    h += `<details data-sec="mant" ${ab("mant", true)} style="margin-top:12px"><summary><b>OS do mantenedor no SGMAN</b> — ${nf(doMant.length - probs.length)} de ${nf(doMant.length)} OK</summary>
+      <div class="barra" style="margin:8px 0"><label>Mantenedor <select id="sgMant">${exs.map(e => `<option value="${esc(e)}" ${mesmoNome(e, SG.mant) ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></label>
+      <span class="muted">OK = concluída e com comentário de 4 linhas (conjunto, item, problema e solução).</span></div>`;
+    if (!probs.length) h += '<p class="muted">Todas as OS dele estão concluídas e com o comentário completo.</p>';
+    else h += `<div class="scroll"><table><thead><tr><th>OS</th><th>Descrição</th><th>Status</th><th>Prog.</th><th>O que falta</th><th>No site?</th><th>Comentário</th></tr></thead><tbody>${probs.map(({ l, p }) =>
+      `<tr><td class="num">${l.num}</td><td style="max-width:280px">${esc(l.desc || '')}</td><td>${esc(l.st)}</td><td>${dBR(l.prog)}</td>
+       <td style="color:var(--bad)">${p.join('; ')}</td><td>${O.linhas.some(o => Number(o.numero) === l.num) ? 'sim' : '<span class="muted">não</span>'}</td>
+       <td style="max-width:280px" class="muted">${l.linhasCom.map(esc).join('<br>')}</td></tr>`).join('')}</tbody></table></div>`;
+    h += '</details>';
+
+    // 3. Site sem SGMAN
+    h += `<details data-sec="site" ${ab('site', C.naoEncontradas.length > 0)} style="margin-top:12px"><summary><b>Estão no site e não no SGMAN</b> — ${nf(C.naoEncontradas.length)}</summary>`;
+    h += C.naoEncontradas.length ? `<ul>${C.naoEncontradas.map(o => `<li><b>OS ${o.numero}</b> · ${esc(o.descricao || '')} <span class="muted">· ${esc(o.mantenedor || '')}</span> — confira o número ou se ela foi aberta no SGMAN.</li>`).join('')}</ul>`
+      : '<p class="muted">Todas as OS numeradas do site estão no arquivo.</p>';
+    if (C.foraPeriodo.length) h += `<p class="muted">${nf(C.foraPeriodo.length)} OS do site têm número menor que o primeiro do arquivo (${C.foraPeriodo.map(o => o.numero).join(', ')}); para conferir, exporte um período maior do SGMAN.</p>`;
+    h += '</details>';
+
+    // 4. Lembretes sem número
+    h += `<details data-sec="semnum" ${ab('semnum', C.semNumero.length > 0)} style="margin-top:12px"><summary><b>No site ainda sem número (lembretes)</b> — ${nf(C.semNumero.length)}</summary>`;
+    if (!C.semNumero.length) h += '<p class="muted">Nenhuma OS sem número.</p>';
+    else h += `<p class="muted" style="margin:6px 0">Procurei no SGMAN OS parecidas que ainda não estão no site. Se uma delas for a mesma, vincule; o número é gravado e as diferenças aparecem acima.</p>` +
+      C.semNumero.map(({ o, cand }) => `<div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0" data-id="${o.id}">
+        <div><b>${esc(o.descricao)}</b> <span class="muted">· ${esc(o.mantenedor || 'sem mantenedor')}${o.data_abertura ? ' · anotada em ' + dBR(o.data_abertura) : ''}</span></div>
+        ${cand.length ? cand.map(x => `<div style="margin-top:6px">${dona ? `<button class="btn small" data-act="vincular" data-num="${x.l.num}" type="button">É esta</button> ` : ''}${linhaSg(x.l)}</div>`).join('')
+          : '<div class="muted" style="margin-top:6px">Nada parecido no SGMAN: parece que ainda não foi criada.</div>'}
+        ${dona ? `<div style="margin-top:6px"><input type="number" class="sg-num" placeholder="Nº da OS" style="width:110px"> <button class="btn small" data-act="vincular-manual" type="button">Vincular a este número</button></div>` : ''}
+      </div>`).join('');
+    h += '</details>';
+
+    // 5. SGMAN sem site
+    h += `<details data-sec="sosg" ${ab("sosg", false)} style="margin-top:12px"><summary><b>Estão no SGMAN e não no site</b> (sem CIL) — ${nf(C.soSgman.length)}</summary>`;
+    if (C.soSgman.length) h += `${dona ? '<div style="margin:8px 0"><button class="btn small" data-act="adicionar-todas" type="button">Adicionar todas ao site</button></div>' : ''}
+      <div class="scroll"><table><thead><tr><th>OS</th><th>Descrição</th><th>Tipo</th><th>Executante</th><th>Status</th><th>Prog.</th>${dona ? '<th></th>' : ''}</tr></thead><tbody>${C.soSgman.sort((a, b) => b.num - a.num).map(l =>
+        `<tr><td class="num">${l.num}</td><td style="max-width:300px">${esc(l.desc || '')}</td><td>${esc(l.tipo)}</td><td>${esc(l.ex)}</td><td>${esc(l.st)}</td><td>${dBR(l.prog)}</td>
+        ${dona ? `<td style="white-space:nowrap"><button class="btn small" data-act="adicionar" data-num="${l.num}" type="button">Adicionar ao site</button> <button class="btn small" data-act="ignorar" data-num="${l.num}" type="button">Ignorar</button></td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+    else h += '<p class="muted">Nenhuma.</p>';
+    if (C.ignoradas) h += `<p class="muted">${nf(C.ignoradas)} ignoradas por você. ${dona ? '<button class="btn small" data-act="designorar" type="button">Voltar a mostrar</button>' : ''}</p>`;
+    h += '</details></div>';
+    el.innerHTML = h;
+    const sel = $('sgMant'); if (sel) sel.onchange = () => { SG.mant = sel.value; sgRender(); };
+  }
+
+  /* ---------- ações ---------- */
+  function linhaNova(l, pos) {
+    const r = { posicao: pos, numero: l.num, descricao: l.desc, mantenedor: l.ex ? nomeNoSite(l.ex) : null, data: l.prog,
+      feitas: norm(l.st) === 'CONCLUIDA' ? 'SIM' : 'NÃO', ordem_grupo: l.pend };
+    if (l.cips) Object.assign(r, l.cips);
+    return r;
+  }
+  async function sgClique(e) {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'fechar') { SG.conf = null; SG.linhas = null; sgRender(); return; }
+    if (!CTX.dona) return;
+    const caixa = b.closest('.sg-os');
+    if (act === 'tudo-sg' || act === 'tudo-site') { caixa.querySelectorAll(`input[value="${act === 'tudo-sg' ? 'sg' : 'site'}"]`).forEach(r => { r.checked = true; }); return; }
+    if (b.disabled) return; b.disabled = true;
+    try {
+      if (act === 'aplicar') {
+        let nAtual = 0, nMant = 0;
+        for (const m of SG.conf.mudancas) {
+          const upd = {}, dec = SG.dec[m.o.numero] || {};
+          for (const c of m.campos) {
+            const r = document.querySelector(`input[name="sg-${m.o.numero}-${c.k}"]:checked`); if (!r) continue;
+            if (r.value === 'sg') { upd[c.k] = c.sg; delete dec[c.k]; }
+            else { dec[c.k] = cmpTxt(valorSg(m.l, c.k)); nMant++; }
+          }
+          SG.dec[m.o.numero] = dec;
+          if (Object.keys(upd).length) {
+            const { error } = await sb.from('os').update(Object.assign({}, upd, { atualizado_em: new Date().toISOString() })).eq('id', m.o.id);
+            if (error) { CTX.erro('Erro ao salvar a OS ' + m.o.numero + ': ' + error.message); return; }
+            Object.assign(m.o, upd); nAtual++;
+          }
+        }
+        await sgSalvarConfig('sgman_decisoes', SG.dec);
+        CTX.aviso(`${nAtual} OS atualizadas com o SGMAN${nMant ? `; ${nMant} campos mantidos do site` : ''}`);
+      } else if (act === 'vincular' || act === 'vincular-manual') {
+        const box = b.closest('[data-id]'), o = O.linhas.find(x => String(x.id) === box.dataset.id);
+        const num = Number(act === 'vincular' ? b.dataset.num : box.querySelector('.sg-num').value);
+        if (!o || !num) { CTX.erro('Informe o número da OS.'); return; }
+        const outra = O.linhas.find(x => x !== o && Number(x.numero) === num);
+        if (outra && !confirm(`A OS ${num} já está no site (${outra.descricao || 'sem descrição'}). Vincular mesmo assim? Ficarão duas linhas com o mesmo número.`)) return;
+        const { error } = await sb.from('os').update({ numero: num, atualizado_em: new Date().toISOString() }).eq('id', o.id);
+        if (error) { CTX.erro('Erro ao vincular: ' + error.message); return; }
+        o.numero = num; CTX.aviso(`Vinculada à OS ${num}`);
+      } else if (act === 'adicionar' || act === 'adicionar-todas') {
+        const lista = act === 'adicionar' ? SG.conf.soSgman.filter(l => l.num === Number(b.dataset.num)) : SG.conf.soSgman.slice().sort((a, b2) => a.num - b2.num);
+        if (act === 'adicionar-todas' && !confirm(`Adicionar ${lista.length} OS do SGMAN ao site?`)) return;
+        let pos = O.linhas.reduce((a, o) => Math.max(a, o.posicao || 0), 0);
+        const novas = lista.map(l => linhaNova(l, ++pos));
+        const { data, error } = await sb.from('os').insert(novas).select();
+        if (error) { CTX.erro('Erro ao adicionar: ' + error.message); return; }
+        O.linhas.push(...data); CTX.aviso(`${data.length} OS adicionadas`);
+      } else if (act === 'ignorar') {
+        SG.dec.__ignoradas = [...new Set([...(SG.dec.__ignoradas || []), Number(b.dataset.num)])];
+        await sgSalvarConfig('sgman_decisoes', SG.dec);
+      } else if (act === 'designorar') {
+        SG.dec.__ignoradas = [];
+        await sgSalvarConfig('sgman_decisoes', SG.dec);
+      }
+      const y = window.scrollY;
+      sgConferir(); osRender(); window.scrollTo(0, y);
+    } finally { b.disabled = false; }
+  }
+
   function osIniciar() {
     $('sec-os').innerHTML = osHTML();
     MGZoom.anexar('oTabela');
     GO = MGTeclado.grade($('oTabela'), { seletor: 'input[data-k], select[data-k], textarea[data-k]', chaveLinha: tr => tr.dataset.id });
     $('oMant').addEventListener('change', osRender);
     $('oFeitas').addEventListener('change', osRender);
+    $('oOrdem').addEventListener('change', () => { ORD.k = $('oOrdem').value; ORD.dir = 1; guardarOrdem(); osRender(); });
+    $('oDir').addEventListener('click', () => { ORD.dir = -ORD.dir; guardarOrdem(); osRender(); });
+    $('oTabela').addEventListener('click', e => {
+      const th = e.target.closest('th.o-ord'); if (!th) return;
+      if (ORD.k === th.dataset.ord) ORD.dir = -ORD.dir; else { ORD.k = th.dataset.ord; ORD.dir = 1; }
+      guardarOrdem(); osRender();
+    });
+    $('oSgBtn').addEventListener('click', () => { $('oSgArq').value = ''; $('oSgArq').click(); });
+    $('oSgArq').addEventListener('change', e => { const f = e.target.files[0]; if (f) sgLerArquivo(f); });
+    $('oSg').addEventListener('click', sgClique);
+    $('oSg').addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) SG.abertos[d.dataset.sec] = d.open; }, true);
     $('oNova').addEventListener('click', async () => {
       const btn = $('oNova'); if (btn.disabled) return; btn.disabled = true;
       const pos = O.linhas.reduce((a, o) => Math.max(a, o.posicao || 0), 0) + 1;
