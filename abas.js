@@ -1141,7 +1141,8 @@ window.MGAbas = (function () {
     const nota = txt(o.nota) ? `<span class="os-nota" title="${esc(o.nota)}">${esc(o.nota)}</span>` : '';
     if (DENS.v === 'fina') {
       return `<article class="os-card fina" data-id="${o.id}" tabindex="0" title="${esc(meta)}">
-        ${num}<span class="os-data1" title="${o.data ? 'Data programada' : 'Data de abertura'}">${dBR(o.data || o.data_abertura || '') || '—'}</span><span class="os-tit1">${nota}${esc(o.descricao || '(sem descrição)')}</span>
+        ${(() => { const q = osQuando(o), d = q.ref ? dBR(q.ref.slice(0, 10)) : '—', h = q.ref.length > 10 ? q.ref.slice(11, 16) : '';
+          return `${num}<span class="os-data1" title="${esc(q.tx)}">${d}${h ? `<small>${h}</small>` : ''}</span>`; })()}<span class="os-tit1">${nota}${esc(o.descricao || '(sem descrição)')}</span>
         <span class="os-tags1">${tagsHTML(o)}</span><span class="os-cips1">${cips}</span>
         ${feitaBtn(o)}<span class="os-pct ${pctClasse(pct)}">${pctTx}</span></article>`;
     }
@@ -1150,7 +1151,7 @@ window.MGAbas = (function () {
         ${meta ? `<div class="os-meta">${esc(meta)}</div>` : ''}
         <div class="os-tit">${num} ${esc(o.descricao || '(sem descrição)')}</div>
         ${nota}
-        <div class="os-linha">${tagsHTML(o)}${o.data ? `<span class="muted">prog. ${dBR(o.data)}</span>` : ''}${o.numero ? sgPill(o) : naoCriada}</div>
+        <div class="os-linha">${tagsHTML(o)}${(() => { const q = osQuando(o); return q.ref && !q.tx.startsWith('aberta') ? `<span class="muted">${esc(q.tx)}</span>` : ''; })()}${o.numero ? sgPill(o) : naoCriada}</div>
       </div>
       <div class="os-cips">${cips}</div>
       <div class="os-dir"><span class="os-pct ${pctClasse(pct)}">${pctTx}</span>${feitaBtn(o)}</div>
@@ -1222,7 +1223,7 @@ window.MGAbas = (function () {
             <div class="os-meta">${esc([o.ordem_grupo != null ? 'Pendência ' + o.ordem_grupo : 'Sem pendência', txt(o.aberta_por) ? 'aberta por ' + o.aberta_por : '', o.data_abertura ? 'em ' + dBR(o.data_abertura) : ''].filter(Boolean).join(' · '))}</div>
             <h3><span class="os-num">${o.numero ? 'OS ' + o.numero : 'OS sem nº'}</span> ${esc(o.descricao || '')}</h3>
             ${o.numero ? '' : '<div><span class="pill turno_anterior">não criada no SGMAN</span> <span class="muted">coloque o nº da OS quando ela for aberta lá</span></div>'}
-            ${s ? `<div class="muted">SGMAN: ${sgPill(o)} ${esc(s.ex || '')}${s.ter ? ' · terminou ' + dBR(s.ter) : ''}</div>` : ''}
+            ${s ? `<div class="muted">SGMAN: ${sgPill(o)} ${esc(s.ex || '')}${s.ph ? ' · programada ' + dhBR(s.ph) : ''}${s.ih ? ' · início ' + dhBR(s.ih) : ''}${s.ter ? ' · terminou ' + dBR(s.ter) : ''}</div>` : ''}
           </div>
           <div class="os-pct ${pctClasse(pct)}">${Math.round(pct * 100)}%</div>
         </div>
