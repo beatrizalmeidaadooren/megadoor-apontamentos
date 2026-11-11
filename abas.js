@@ -949,6 +949,24 @@ window.MGAbas = (function () {
     h += `<details data-sec="mant" ${ab("mant", true)} style="margin-top:12px"><summary><b>OS do mantenedor no SGMAN</b> — ${nf(doMant.length - probs.length)} de ${nf(doMant.length)} OK</summary>
       <div class="barra" style="margin:8px 0"><label>Mantenedor <select id="sgMant">${exs.map(e => `<option value="${esc(e)}" ${mesmoNome(e, SG.mant) ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></label>
       <span class="muted">OK = concluída e com comentário de 4 linhas (conjunto, item, problema e solução).</span></div>`;
+    if (probs.length) {
+      // % = média do preenchimento (conjunto, item, problema, solução) das OS dele no SGMAN, igual ao TOTAL da aba OS
+      const nota = l => Math.min(l.linhasCom.length, 4) / 4;
+      const agora = doMant.length ? Math.round(doMant.reduce((a, l) => a + nota(l), 0) / doMant.length * 100) : 0;
+      const nome = String(SG.mant).trim().split(/\s+/)[0];
+      const nomeBonito = nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
+      const itens = probs.slice().sort((a, b) => a.l.num - b.l.num).map(({ l }) => {
+        const f = [];
+        if (norm(l.st) !== 'CONCLUIDA') f.push('fechar');
+        if (!l.com) f.push(f.length ? 'comentário' : 'falta comentário');
+        else if (l.linhasCom.length < 4) f.push('falta ' + PARTES.slice(l.linhasCom.length).join(', '));
+        return `• ${l.num}: ${f.join(' + ')}`;
+      });
+      const msg = `${nomeBonito}, OS pendentes no SGMAN:\n${itens.join('\n')}\nComentário: conjunto / item / problema / solução (1 por linha).\nHoje: ${agora}% → ${100}% após ajustar.`;
+      h += `<div style="margin:8px 0 12px"><b>Mensagem para o mantenedor</b> <span class="muted">· % = média do preenchimento do comentário (conjunto, item, problema e solução) das ${nf(doMant.length)} OS dele no arquivo</span>
+        <textarea id="sgMsg" rows="${Math.min(itens.length + 3, 16)}" style="display:block;width:100%;max-width:560px;margin-top:6px;font:13px var(--mono, monospace)">${esc(msg)}</textarea>
+        <button class="btn small" data-act="copiar-msg" type="button" style="margin-top:6px">Copiar mensagem</button></div>`;
+    }
     if (!probs.length) h += '<p class="muted">Todas as OS dele estão concluídas e com o comentário completo.</p>';
     else h += `<div class="scroll"><table><thead><tr><th>OS</th><th>Descrição</th><th>Status</th><th>Prog.</th><th>O que falta</th><th>No site?</th><th>Comentário</th></tr></thead><tbody>${probs.map(({ l, p }) =>
       `<tr><td class="num">${l.num}</td><td style="max-width:280px">${esc(l.desc || '')}</td><td>${esc(l.st)}</td><td>${dBR(l.prog)}</td>
@@ -999,6 +1017,11 @@ window.MGAbas = (function () {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const act = b.dataset.act;
     if (act === 'fechar') { SG.conf = null; SG.linhas = null; sgRender(); return; }
+    if (act === 'copiar-msg') {
+      const t = $('sgMsg'); t.select();
+      try { await navigator.clipboard.writeText(t.value); } catch (err) { document.execCommand('copy'); }
+      CTX.aviso('Mensagem copiada'); return;
+    }
     if (!CTX.dona) return;
     const caixa = b.closest('.sg-os');
     if (act === 'tudo-sg' || act === 'tudo-site') { caixa.querySelectorAll(`input[value="${act === 'tudo-sg' ? 'sg' : 'site'}"]`).forEach(r => { r.checked = true; }); return; }
