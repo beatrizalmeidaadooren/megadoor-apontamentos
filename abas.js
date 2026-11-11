@@ -1035,6 +1035,7 @@ window.MGAbas = (function () {
       <label>Ordenar por <select id="oOrdem">${OS_ORDENS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
       <button class="btn small" id="oDir" type="button" title="Inverter a ordem">↑ Crescente</button>
       <label>Buscar <input id="oBusca" type="search" placeholder="nº, descrição, nota…" style="width:170px"></label>
+      <span class="os-dens" id="oDens" role="group" aria-label="Espessura da lista"><button type="button" data-d="fina">☰ Fina</button><button type="button" data-d="espessa">▤ Espessa</button></span>
       <span class="muted" id="oResumo"></span>
       <button class="btn small" id="oSgBtn" type="button">Conferir com o SGMAN</button>
       <input type="file" id="oSgArq" accept=".xlsx,.xls" hidden>
@@ -1106,22 +1107,31 @@ window.MGAbas = (function () {
     const f = norm(o.feitas), t = f === 'SIM' ? '✓ Feita' : f === 'NAO' ? 'Não feita' : 'Feita?';
     return `<button type="button" class="os-feita ${f === 'SIM' ? 'sim' : f === 'NAO' ? 'nao' : ''} ${cls || ''}" data-feita ${CTX.dona ? '' : 'disabled'} title="Clique para alternar">${t}</button>`;
   }
+  const DENS = { v: (() => { try { return localStorage.getItem('mg-os-densidade') || 'espessa'; } catch (e) { return 'espessa'; } })() };
   function cartaoOS(o) {
-    const pct = MGPlanilha.totalOS(o);
+    const pct = MGPlanilha.totalOS(o), pctTx = Math.round(pct * 100) + '%';
     const meta = [o.ordem_grupo != null ? 'Pendência ' + o.ordem_grupo : '', txt(o.aberta_por) ? 'aberta por ' + o.aberta_por : '', o.data_abertura ? 'em ' + dBR(o.data_abertura) : ''].filter(Boolean).join(' · ');
     const cips = CIPS.map(([k, n]) => {
       const v = padV(o, k), orig = txt(o[k]);
-      return `<span class="os-c ${orig ? '' : 'falta'}"><small>${n}${txt(o[k + '_p']) ? ' <i title="Padronizado. Escrito pelo mantenedor: ' + esc(orig || '(vazio)') + '">≈</i>' : ''}</small>${v ? esc(v) : '<em>falta</em>'}</span>`;
+      return `<span class="os-c ${orig ? '' : 'falta'}" title="${esc(n + ': ' + (v || 'falta') + (txt(o[k + '_p']) ? ' (escrito pelo mantenedor: ' + (orig || 'vazio') + ')' : ''))}"><small>${n}${txt(o[k + '_p']) ? ' <i>≈</i>' : ''}</small>${v ? esc(v) : '<em>falta</em>'}</span>`;
     }).join('');
+    const num = `<span class="os-num">${o.numero ? 'OS ' + o.numero : 'sem nº'}</span>`;
+    const nota = txt(o.nota) ? `<span class="os-nota" title="${esc(o.nota)}">${esc(o.nota)}</span>` : '';
+    if (DENS.v === 'fina') {
+      return `<article class="os-card fina" data-id="${o.id}" tabindex="0" title="${esc(meta)}">
+        ${num}<span class="os-tit1">${nota}${esc(o.descricao || '(sem descrição)')}</span>
+        <span class="os-tags1">${tagsHTML(o)}</span><span class="os-cips1">${cips}</span>
+        ${feitaBtn(o)}<span class="os-pct ${pctClasse(pct)}">${pctTx}</span></article>`;
+    }
     return `<article class="os-card" data-id="${o.id}" tabindex="0">
-      <div class="os-corpo">
+      <div class="os-esq">
         ${meta ? `<div class="os-meta">${esc(meta)}</div>` : ''}
-        <div class="os-tit"><span class="os-num">${o.numero ? 'OS ' + o.numero : 'sem nº'}</span> ${esc(o.descricao || '(sem descrição)')}</div>
-        ${txt(o.nota) ? `<div class="os-nota">${esc(o.nota)}</div>` : ''}
-        <div class="os-linha">${tagsHTML(o)}${o.data ? `<span class="muted">prog. ${dBR(o.data)}</span>` : ''}${o.numero ? sgPill(o) : ''}${feitaBtn(o)}</div>
-        <div class="os-cips">${cips}</div>
+        <div class="os-tit">${num} ${esc(o.descricao || '(sem descrição)')}</div>
+        ${nota}
+        <div class="os-linha">${tagsHTML(o)}${o.data ? `<span class="muted">prog. ${dBR(o.data)}</span>` : ''}${o.numero ? sgPill(o) : ''}</div>
       </div>
-      <div class="os-pct ${pctClasse(pct)}">${Math.round(pct * 100)}%</div>
+      <div class="os-cips">${cips}</div>
+      <div class="os-dir"><span class="os-pct ${pctClasse(pct)}">${pctTx}</span>${feitaBtn(o)}</div>
     </article>`;
   }
 
@@ -1132,7 +1142,10 @@ window.MGAbas = (function () {
     $('oResumo').textContent = `${nf(regs.length)} de ${nf(O.linhas.length)} OS`;
     $('oNova').hidden = !CTX.dona;
     osPareto(regs);
-    $('oLista').innerHTML = regs.length ? regs.map(cartaoOS).join('') : '<p class="muted card">Nenhuma OS com esses filtros.</p>';
+    $('oLista').className = 'os-lista ' + DENS.v;
+    document.querySelectorAll('#oDens button').forEach(b => b.classList.toggle('on', b.dataset.d === DENS.v));
+    $('oLista').innerHTML = regs.length ? (DENS.v === 'fina' ? '<div class="os-cab"><span>Nº</span><span>Descrição</span><span>Mantenedores</span><span class="os-cips1"><span>Conjunto</span><span>Item</span><span>Problema</span><span>Solução</span></span><span>Feita</span><span>%</span></div>' : '')
+      + regs.map(cartaoOS).join('') : '<p class="muted card">Nenhuma OS com esses filtros.</p>';
     if (OS_JAN) OS_JAN.atualizar();
   }
 
@@ -1279,6 +1292,7 @@ window.MGAbas = (function () {
     $('oFeitas').addEventListener('change', osRender);
     $('oOrdem').addEventListener('change', () => { ORD.k = $('oOrdem').value; ORD.dir = 1; guardarOrdem(); osRender(); });
     $('oDir').addEventListener('click', () => { ORD.dir = -ORD.dir; guardarOrdem(); osRender(); });
+    $('oDens').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; DENS.v = b.dataset.d; try { localStorage.setItem('mg-os-densidade', DENS.v); } catch (er) { } osRender(); });
     let tBusca = null;
     $('oBusca').addEventListener('input', e => { clearTimeout(tBusca); tBusca = setTimeout(() => { OF.busca = e.target.value; osRender(); }, 200); });
     $('oFiltrosCips').addEventListener('change', e => { const k = e.target.dataset.nivel; if (!k) return; OF[k] = e.target.value; osRender(); });
