@@ -658,38 +658,12 @@ window.MGAbas = (function () {
 
   /* =================== OS =================== */
   const O = { linhas: [] };
-  const OS_COLS = [
-    ['ordem_grupo', 'ID', 'num', 70], ['aberta_por', 'Aberta por', 'txt', 110], ['data_abertura', 'Data', 'date'], ['numero', 'Nº OS', 'num', 80],
-    ['descricao', 'Descrição', 'area', 220], ['nota', 'Nota', 'txt', 140], ['mantenedor', 'Mantenedor', 'txt', 130], ['data', 'Data', 'date'],
-    ['feitas', 'Feitas', 'sel'], ['conjunto', 'Conjunto', 'area', 140], ['item', 'Item', 'area', 120], ['problema', 'Problema', 'area', 180],
-    ['solucao', 'Solução', 'area', 200], ['observacoes', 'Observações', 'area', 160], ['_total', 'Total', 'calc'], ['_sgman', 'SGMAN', 'sg'], ['analise', 'Análise', 'area', 200]];
   const OS_ORDENS = [['posicao', 'Ordem da lista (manual)'], ['numero', 'Nº OS'], ['data', 'Data (programada)'], ['data_abertura', 'Data de abertura'],
     ['ordem_grupo', 'ID (pendência)'], ['mantenedor', 'Mantenedor'], ['feitas', 'Feitas'], ['_total', 'Total'], ['_sgman', 'Status no SGMAN'],
-    ['descricao', 'Descrição'], ['conjunto', 'Conjunto'], ['atualizado_em', 'Última alteração']];
+    ['descricao', 'Descrição'], ['conjunto', 'Conjunto'], ['item', 'Item'], ['problema', 'Problema'], ['solucao', 'Solução'], ['atualizado_em', 'Última alteração']];
   const ORD = (() => { try { const o = JSON.parse(localStorage.getItem('mg-os-ordem') || 'null'); if (o && OS_ORDENS.some(x => x[0] === o.k)) return o; } catch (e) { } return { k: 'posicao', dir: 1 }; })();
   const guardarOrdem = () => { try { localStorage.setItem('mg-os-ordem', JSON.stringify(ORD)); } catch (e) { } };
   const chave = n => norm(n).replace(/\s+/g, ' ');
-
-  function osHTML() {
-    return `
-    <div class="card"><h2>Ordens de serviço</h2>
-      <p class="muted" style="margin:6px 0 0;max-width:90ch">O TOTAL de cada OS é a parte preenchida de Conjunto, Item, Problema e Solução (como na planilha). Para cada mantenedor: "das feitas" é a média do TOTAL das OS marcadas SIM; "todas" é a média de todas as OS dele (é o % usado nas Metas TPM).</p>
-    </div>
-    <div class="kpis" id="oKpis"></div>
-    <div class="barra">
-      <label>Mantenedor <select id="oMant"><option value="">Todos</option></select></label>
-      <label>Feitas <select id="oFeitas"><option value="">Todas</option><option>SIM</option><option>NÃO</option><option value="_vazio">Sem resposta</option></select></label>
-      <label>Ordenar por <select id="oOrdem">${OS_ORDENS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
-      <button class="btn small" id="oDir" type="button" title="Inverter a ordem">↑ Crescente</button>
-      <span class="muted" id="oResumo"></span>
-      <button class="btn small" id="oSgBtn" type="button">Conferir com o SGMAN</button>
-      <input type="file" id="oSgArq" accept=".xlsx,.xls" hidden>
-      <button class="btn small primary" id="oNova" type="button" hidden>Nova OS</button>
-    </div>
-    <div id="oSg"></div>
-    <p class="muted" style="margin:0 0 8px">Teclado: setas andam entre as células (nos textos, ← → saem da célula no começo/fim do texto e ↑ ↓ na primeira/última linha). Tab também funciona.</p>
-    <div class="scroll"><table id="oTabela"></table></div>`;
-  }
 
   async function osCarregar() {
     $('oResumo').textContent = 'Carregando…';
@@ -708,38 +682,6 @@ window.MGAbas = (function () {
       const med = xs => xs.length ? Math.round(xs.reduce((a, o) => a + MGPlanilha.totalOS(o), 0) / xs.length * 100) + '%' : '—';
       return `<div class="kpi"><span>${esc(n)} · ${dele.length} OS</span><b>${med(dele)}</b><span>das feitas: ${med(feitas)} (${feitas.length})</span></div>`;
     }).join('');
-  }
-
-  let GO = null;
-  function osRender() {
-    const foco = GO && GO.lembrar();
-    osKpis();
-    const fM = $('oMant').value, fF = $('oFeitas').value;
-    const regs = O.linhas.filter(o => (!fM || chave(o.mantenedor) === fM) && (!fF || (fF === '_vazio' ? !txt(o.feitas) : norm(o.feitas) === norm(fF))))
-.sort(osComparar);
-    $('oResumo').textContent = `${nf(regs.length)} OS`;
-    $('oNova').hidden = !CTX.dona;
-    const ed = CTX.dona ? '' : 'disabled';
-    $('oOrdem').value = ORD.k; $('oDir').textContent = ORD.dir > 0 ? '↑ Crescente' : '↓ Decrescente';
-    const seta = k => { const kk = k === 'data_abertura' ? 'data_abertura' : k; return ORD.k === kk ? (ORD.dir > 0 ? ' ▲' : ' ▼') : ''; };
-    let h = `<thead><tr>${OS_COLS.map(c => OS_ORDENS.some(o => o[0] === c[0])
-      ? `<th class="o-ord" data-ord="${c[0]}" style="cursor:pointer" title="Ordenar por esta coluna">${c[1]}${seta(c[0])}</th>` : `<th>${c[1]}</th>`).join('')}${CTX.dona ? '<th></th>' : ''}</tr></thead><tbody>`;
-    for (const o of regs) {
-      h += `<tr data-id="${o.id}">` + OS_COLS.map(([k, , tipo, w]) => {
-        const v = o[k];
-        if (tipo === 'calc') return `<td class="num"><b>${Math.round(MGPlanilha.totalOS(o) * 100)}%</b></td>`;
-        if (tipo === 'sg') return `<td>${sgPill(o)}</td>`;
-        if (tipo === 'sel') return `<td><select data-k="${k}" ${ed}>${['', 'SIM', 'NÃO'].map(x => `<option ${norm(v) === norm(x) ? 'selected' : ''}>${x}</option>`).join('')}</select></td>`;
-        if (tipo === 'date') return `<td><input type="date" data-k="${k}" value="${esc(v || '')}" ${ed}></td>`;
-        if (tipo === 'num') return `<td><input type="number" data-k="${k}" value="${v == null ? '' : v}" ${ed} style="width:${w}px"></td>`;
-        if (tipo === 'area') return `<td><textarea data-k="${k}" rows="2" ${ed} style="width:${w}px">${esc(v || '')}</textarea></td>`;
-        return `<td><input data-k="${k}" value="${esc(v || '')}" ${ed} style="width:${w}px"></td>`;
-      }).join('') + (CTX.dona ? '<td><button class="btn small o-del" type="button">Excluir</button></td>' : '') + '</tr>';
-    }
-    h += '</tbody>';
-    if (!regs.length) h = '<tbody><tr><td class="muted" style="padding:18px">Nenhuma OS.</td></tr></tbody>';
-    $('oTabela').innerHTML = h;
-    if (GO) GO.restaurar(foco);
   }
 
   /* =================== OS: ordenação e conferência com o SGMAN =================== */
@@ -785,7 +727,7 @@ window.MGAbas = (function () {
   function osValor(o, k) {
     if (k === '_total') return MGPlanilha.totalOS(o);
     if (k === '_sgman') { const s = sgStatus(o); return s ? (ST_ORDEM[norm(s.st)] || 9) : null; }
-    const v = o[k];
+    const v = ['conjunto', 'item', 'problema', 'solucao'].includes(k) ? padV(o, k) : o[k];
     if (v == null || v === '') return null;
     if (['numero', 'ordem_grupo', 'posicao'].includes(k)) return Number(v);
     if (['data', 'data_abertura', 'atualizado_em'].includes(k)) return String(v);
@@ -1074,18 +1016,277 @@ window.MGAbas = (function () {
     } finally { b.disabled = false; }
   }
 
+  /* ---------- OS em cartões ---------- */
+  const CIPS = [['conjunto', 'Conjunto'], ['item', 'Item'], ['problema', 'Problema'], ['solucao', 'Solução']];
+  const padV = (o, k) => txt(o[k + '_p']) || txt(o[k]);          // valor padronizado (ou o original, se não houver)
+  const OF = { conjunto: '', item: '', problema: '', solucao: '', busca: '', pareto: 'conjunto' };
+  const participantes = o => Array.isArray(o.participantes) ? o.participantes.filter(Boolean) : [];
+  let CAT_OS = null;   // nomes dos menus (aba Menus) por nível, para sugerir na padronização
+
+  function osHTML() {
+    return `
+    <div class="card"><h2>Ordens de serviço</h2>
+      <p class="muted" style="margin:6px 0 0;max-width:95ch">Clique numa OS para ver e editar tudo. O % à direita é a parte do comentário do mantenedor que tem Conjunto, Item, Problema e Solução. Nos cartões, nos filtros e no pareto aparece o nome padronizado (quando você definiu um); o texto do mantenedor continua guardado como ele escreveu. Para cada mantenedor: "das feitas" é a média do % das OS marcadas como feitas; "todas" é a média de todas as OS dele (é o % usado nas Metas TPM).</p>
+    </div>
+    <div class="kpis" id="oKpis"></div>
+    <div class="barra">
+      <label>Mantenedor <select id="oMant"><option value="">Todos</option></select></label>
+      <label>Feitas <select id="oFeitas"><option value="">Todas</option><option>SIM</option><option>NÃO</option><option value="_vazio">Sem resposta</option></select></label>
+      <label>Ordenar por <select id="oOrdem">${OS_ORDENS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
+      <button class="btn small" id="oDir" type="button" title="Inverter a ordem">↑ Crescente</button>
+      <label>Buscar <input id="oBusca" type="search" placeholder="nº, descrição, nota…" style="width:170px"></label>
+      <span class="muted" id="oResumo"></span>
+      <button class="btn small" id="oSgBtn" type="button">Conferir com o SGMAN</button>
+      <input type="file" id="oSgArq" accept=".xlsx,.xls" hidden>
+      <button class="btn small primary" id="oNova" type="button" hidden>Nova OS</button>
+    </div>
+    <div class="barra" id="oFiltrosCips">
+      ${CIPS.map(([k, n]) => `<label>${n} <select id="oF-${k}" data-nivel="${k}" style="max-width:220px"></select></label>`).join('')}
+      <button class="btn small" id="oLimparCips" type="button">Limpar</button>
+    </div>
+    <details class="card" id="oPareto"><summary style="cursor:pointer"><b>Pareto das OS</b> <span class="muted">(das OS filtradas)</span></summary>
+      <div style="margin:8px 0"><label class="muted">Agrupar por <select id="oParetoNivel">${CIPS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
+      <span class="muted">· clique numa barra para filtrar</span></div>
+      <div id="oParetoLista"></div>
+    </details>
+    <div id="oSg"></div>
+    <div id="oLista" class="os-lista"></div>`;
+  }
+
+  function osFiltradas(exceto) {
+    const fM = $('oMant').value, fF = $('oFeitas').value, b = norm(OF.busca);
+    return O.linhas.filter(o => {
+      if (fM && chave(o.mantenedor) !== fM && !participantes(o).some(p => chave(p) === fM)) return false;
+      if (fF && (fF === '_vazio' ? txt(o.feitas) : norm(o.feitas) !== norm(fF))) return false;
+      for (const [k] of CIPS) {
+        if (k === exceto || !OF[k]) continue;
+        const v = padV(o, k);
+        if (OF[k] === '_vazio' ? v : cmpTxt(v) !== OF[k]) return false;
+      }
+      if (b) {
+        const tudo = norm([o.numero, o.ordem_grupo, o.descricao, o.nota, o.mantenedor, participantes(o).join(' '), o.aberta_por, o.observacoes, o.analise,
+          ...CIPS.flatMap(([k]) => [o[k], o[k + '_p']])].filter(x => x != null).join(' '));
+        if (!tudo.includes(b)) return false;
+      }
+      return true;
+    });
+  }
+  function grupos(regs, k) {
+    const m = new Map();
+    regs.forEach(o => { const v = padV(o, k), c = v ? cmpTxt(v) : '_vazio'; if (!m.has(c)) m.set(c, { c, nome: v || '(vazio)', n: 0 }); m.get(c).n++; });
+    return [...m.values()].sort((a, b) => b.n - a.n || a.nome.localeCompare(b.nome, 'pt'));
+  }
+  function osFiltrosCips() {
+    for (const [k] of CIPS) {
+      const sel = $('oF-' + k), gs = grupos(osFiltradas(k), k);
+      if (OF[k] && !gs.some(g => g.c === OF[k])) gs.unshift({ c: OF[k], nome: OF[k] === '_vazio' ? '(vazio)' : OF[k], n: 0 });
+      sel.innerHTML = '<option value="">Todos</option>' + gs.map(g => `<option value="${esc(g.c)}" ${g.c === OF[k] ? 'selected' : ''}>${esc(g.nome.length > 60 ? g.nome.slice(0, 58) + '…' : g.nome)} (${g.n})</option>`).join('');
+    }
+  }
+  function osPareto(regs) {
+    const k = OF.pareto, gs = grupos(regs, k), tot = regs.length;
+    if (!tot) { $('oParetoLista').innerHTML = '<p class="muted">Nenhuma OS.</p>'; return; }
+    let ac = 0;
+    $('oParetoLista').innerHTML = `<div class="os-pareto">${gs.map(g => {
+      ac += g.n; const pc = g.n / tot * 100;
+      return `<button type="button" class="os-par ${g.c === OF[k] ? 'on' : ''}" data-c="${esc(g.c)}" title="${esc(g.nome)}">
+        <span class="os-par-nome ${g.c === '_vazio' ? 'muted' : ''}">${esc(g.nome)}</span>
+        <span class="os-par-barra"><span style="width:${(g.n / gs[0].n * 100).toFixed(1)}%"></span></span>
+        <span class="num">${g.n}</span><span class="num muted">${pc.toFixed(0)}%</span><span class="num muted">${(ac / tot * 100).toFixed(0)}% ac.</span></button>`;
+    }).join('')}</div>`;
+  }
+
+  const pctClasse = p => p >= 1 ? 'p100' : p > 0 ? 'pmeio' : 'pzero';
+  function tagsHTML(o) {
+    const ps = participantes(o);
+    return (txt(o.mantenedor) ? `<span class="os-tag princ" title="Aberta para (SGMAN)">${esc(String(o.mantenedor).replace(/\s+/g, ' ').trim())}</span>` : '<span class="os-tag vazia">sem mantenedor</span>')
+      + ps.map(p => `<span class="os-tag part" title="Participou">+ ${esc(p)}</span>`).join('');
+  }
+  function feitaBtn(o, cls) {
+    const f = norm(o.feitas), t = f === 'SIM' ? '✓ Feita' : f === 'NAO' ? 'Não feita' : 'Feita?';
+    return `<button type="button" class="os-feita ${f === 'SIM' ? 'sim' : f === 'NAO' ? 'nao' : ''} ${cls || ''}" data-feita ${CTX.dona ? '' : 'disabled'} title="Clique para alternar">${t}</button>`;
+  }
+  function cartaoOS(o) {
+    const pct = MGPlanilha.totalOS(o);
+    const meta = [o.ordem_grupo != null ? 'Pendência ' + o.ordem_grupo : '', txt(o.aberta_por) ? 'aberta por ' + o.aberta_por : '', o.data_abertura ? 'em ' + dBR(o.data_abertura) : ''].filter(Boolean).join(' · ');
+    const cips = CIPS.map(([k, n]) => {
+      const v = padV(o, k), orig = txt(o[k]);
+      return `<span class="os-c ${orig ? '' : 'falta'}"><small>${n}${txt(o[k + '_p']) ? ' <i title="Padronizado. Escrito pelo mantenedor: ' + esc(orig || '(vazio)') + '">≈</i>' : ''}</small>${v ? esc(v) : '<em>falta</em>'}</span>`;
+    }).join('');
+    return `<article class="os-card" data-id="${o.id}" tabindex="0">
+      <div class="os-corpo">
+        ${meta ? `<div class="os-meta">${esc(meta)}</div>` : ''}
+        <div class="os-tit"><span class="os-num">${o.numero ? 'OS ' + o.numero : 'sem nº'}</span> ${esc(o.descricao || '(sem descrição)')}</div>
+        ${txt(o.nota) ? `<div class="os-nota">${esc(o.nota)}</div>` : ''}
+        <div class="os-linha">${tagsHTML(o)}${o.data ? `<span class="muted">prog. ${dBR(o.data)}</span>` : ''}${o.numero ? sgPill(o) : ''}${feitaBtn(o)}</div>
+        <div class="os-cips">${cips}</div>
+      </div>
+      <div class="os-pct ${pctClasse(pct)}">${Math.round(pct * 100)}%</div>
+    </article>`;
+  }
+
+  function osRender() {
+    osKpis(); osFiltrosCips();
+    const regs = osFiltradas().sort(osComparar);
+    $('oOrdem').value = ORD.k; $('oDir').textContent = ORD.dir > 0 ? '↑ Crescente' : '↓ Decrescente';
+    $('oResumo').textContent = `${nf(regs.length)} de ${nf(O.linhas.length)} OS`;
+    $('oNova').hidden = !CTX.dona;
+    osPareto(regs);
+    $('oLista').innerHTML = regs.length ? regs.map(cartaoOS).join('') : '<p class="muted card">Nenhuma OS com esses filtros.</p>';
+    if (OS_JAN) OS_JAN.atualizar();
+  }
+
+  /* ---------- quadro de uma OS ---------- */
+  let OS_JAN = null;
+  async function catOS() {
+    if (CAT_OS) return CAT_OS;
+    CAT_OS = { conjunto: new Set(), item: new Set(), problema: new Set(), solucao: new Set() };
+    try {
+      const { data } = await sb.from('catalogo').select('nivel,nome,ativo').limit(5000);
+      (data || []).forEach(c => { if (c.ativo !== false && CAT_OS[c.nivel]) CAT_OS[c.nivel].add(c.nome); });
+    } catch (e) { }
+    O.linhas.forEach(o => CIPS.forEach(([k]) => { if (txt(o[k + '_p'])) CAT_OS[k].add(o[k + '_p'].trim()); }));
+    return CAT_OS;
+  }
+  function nomesConhecidos() {
+    const m = new Map();
+    const add = n => { const s = txt(n) && String(n).replace(/\s+/g, ' ').trim(); if (s && !m.has(chave(s)) && ![...m.values()].some(x => mesmoNome(x, s))) m.set(chave(s), s); };
+    O.linhas.forEach(o => { add(o.mantenedor); participantes(o).forEach(add); });
+    if (SG.ultimo && SG.ultimo.os) Object.values(SG.ultimo.os).forEach(s => add(s.ex));
+    return [...m.values()].sort((a, b) => a.localeCompare(b, 'pt'));
+  }
+
+  async function salvarOS(o, upd, aviso) {
+    const { error } = await sb.from('os').update(Object.assign({}, upd, { atualizado_em: new Date().toISOString() })).eq('id', o.id);
+    if (error) { CTX.erro('Erro ao salvar a OS: ' + error.message); return false; }
+    Object.assign(o, upd); CTX.aviso(aviso || 'Salvo'); osRender(); return true;
+  }
+
+  async function osAbrir(o, origem) {
+    if (OS_JAN) OS_JAN.fechar();
+    const cat = await catOS();
+    const dona = CTX.dona, dis = dona ? '' : 'disabled';
+    const fundo = document.createElement('div'); fundo.className = 'dv-fundo';
+    const jan = document.createElement('div'); jan.className = 'dv-jan os-jan'; jan.setAttribute('role', 'dialog'); jan.setAttribute('aria-label', 'OS');
+    document.body.append(fundo, jan);
+    const editOrig = new Set();
+    function fechar() { fundo.remove(); jan.remove(); document.removeEventListener('keydown', esc_, true); OS_JAN = null; if (origem && origem.isConnected) origem.focus({ preventScroll: true }); }
+    function esc_(e) { if (e.key === 'Escape') { e.preventDefault(); fechar(); } }
+    document.addEventListener('keydown', esc_, true);
+    fundo.addEventListener('click', fechar);
+    const campo = (k, rot, tipo, extra) => `<label class="os-f"><span>${rot}</span>${tipo === 'area'
+      ? `<textarea data-k="${k}" rows="${extra || 2}" ${dis}>${esc(o[k] || '')}</textarea>`
+      : `<input data-k="${k}" type="${tipo || 'text'}" value="${esc(o[k] == null ? '' : o[k])}" ${dis}>`}</label>`;
+    function desenhar() {
+      const pct = MGPlanilha.totalOS(o), s = sgStatus(o), nomes = nomesConhecidos(), ps = participantes(o);
+      const outros = nomes.filter(n => !(txt(o.mantenedor) && mesmoNome(n, o.mantenedor)));
+      jan.innerHTML = `<button class="dv-x" type="button" aria-label="Fechar">×</button>
+        <div class="os-jan-topo">
+          <div style="min-width:0">
+            <div class="os-meta">${esc([o.ordem_grupo != null ? 'Pendência ' + o.ordem_grupo : 'Sem pendência', txt(o.aberta_por) ? 'aberta por ' + o.aberta_por : '', o.data_abertura ? 'em ' + dBR(o.data_abertura) : ''].filter(Boolean).join(' · '))}</div>
+            <h3><span class="os-num">${o.numero ? 'OS ' + o.numero : 'OS sem nº'}</span> ${esc(o.descricao || '')}</h3>
+            ${s ? `<div class="muted">SGMAN: ${sgPill(o)} ${esc(s.ex || '')}${s.ter ? ' · terminou ' + dBR(s.ter) : ''}</div>` : ''}
+          </div>
+          <div class="os-pct ${pctClasse(pct)}">${Math.round(pct * 100)}%</div>
+        </div>
+        <div class="os-grade">
+          ${campo('numero', 'Nº OS', 'number')}${campo('ordem_grupo', 'ID da pendência', 'number')}${campo('aberta_por', 'Aberta por')}
+          ${campo('data_abertura', 'Data de abertura', 'date')}${campo('data', 'Data programada', 'date')}
+          <div class="os-f"><span>Feita?</span>${feitaBtn(o, 'grande')}</div>
+        </div>
+        ${campo('descricao', 'Descrição', 'area', 2)}
+        <label class="os-f os-f-nota"><span>Nota</span><input data-k="nota" value="${esc(o.nota || '')}" ${dis} placeholder="lembrete curto (aparece destacado no cartão)"></label>
+        <div class="os-bloco"><b>Mantenedores</b>
+          <div class="os-f" style="margin-top:6px"><span>Aberta para (SGMAN)</span>
+            <div><input data-k="mantenedor" list="osNomes" value="${esc(o.mantenedor || '')}" ${dis} style="width:240px"></div></div>
+          <div class="os-f"><span>Participaram</span><div class="os-tags-ed">
+            ${outros.map(n => `<button type="button" class="os-tag ${ps.some(p => mesmoNome(p, n)) ? 'part on' : 'opc'}" data-part="${esc(n)}" ${dis}>${ps.some(p => mesmoNome(p, n)) ? '✓ ' : '+ '}${esc(n)}</button>`).join('')}
+            ${ps.filter(p => !outros.some(n => mesmoNome(p, n))).map(p => `<button type="button" class="os-tag part on" data-part="${esc(p)}" ${dis}>✓ ${esc(p)}</button>`).join('')}
+            ${dona ? '<input id="osNovoPart" list="osNomes" placeholder="outro nome + Enter" style="width:170px">' : ''}</div></div>
+          <datalist id="osNomes">${nomes.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+        </div>
+        <div class="os-bloco"><b>Conjunto, item, problema e solução</b>
+          <p class="muted" style="margin:2px 0 6px">À esquerda, o que o mantenedor escreveu no comentário (não é alterado). À direita, o nome padronizado que você quer usar nos filtros e no pareto; deixe vazio para usar o original.</p>
+          <table class="os-cips-tab"><thead><tr><th></th><th>Comentário do mantenedor</th><th>Padronizado</th></tr></thead><tbody>
+          ${CIPS.map(([k, n]) => `<tr><td><b>${n}</b></td>
+            <td>${editOrig.has(k) ? `<textarea data-k="${k}" rows="2" ${dis}>${esc(o[k] || '')}</textarea>`
+              : `<div class="os-orig">${o[k] ? esc(o[k]).replace(/\n/g, '<br>') : '<em class="muted">vazio</em>'}</div>${dona ? `<button type="button" class="os-ed-orig" data-orig="${k}">editar original</button>` : ''}`}</td>
+            <td><input data-k="${k}_p" data-pad="${k}" list="osCat-${k}" value="${esc(o[k + '_p'] || '')}" placeholder="(usa o original)" ${dis}>
+              <datalist id="osCat-${k}">${[...cat[k]].sort((a, b) => a.localeCompare(b, 'pt')).map(v => `<option value="${esc(v)}">`).join('')}</datalist></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+        ${campo('observacoes', 'Observações', 'area', 2)}
+        ${campo('analise', 'Análise', 'area', 2)}
+        ${dona ? '<div style="margin-top:10px;text-align:right"><button class="btn small" type="button" data-excluir>Excluir OS</button></div>' : ''}`;
+      jan.querySelector('.dv-x').onclick = fechar;
+      if (window.MGJanela) setTimeout(() => window.MGJanela.encaixar && window.MGJanela.encaixar(), 0);
+    }
+    desenhar();
+    jan.addEventListener('change', async e => {
+      if (!dona) return;
+      const el = e.target, k = el.dataset.k; if (!k) return;
+      let v = el.value;
+      v = el.type === 'number' ? (v === '' ? null : Number(v)) : txt(v);
+      if (await salvarOS(o, { [k]: v })) {
+        const base = el.dataset.pad;
+        if (base && v) {
+          // padronizou: oferece aplicar às outras OS com o mesmo texto original
+          const iguais = O.linhas.filter(x => x !== o && txt(x[base]) && cmpTxt(x[base]) === cmpTxt(o[base]) && !txt(x[base + '_p']));
+          if (iguais.length && confirm(`Outras ${iguais.length} OS têm o mesmo texto "${(o[base] || '').slice(0, 60)}". Usar "${v}" nelas também?`)) {
+            const { error } = await sb.from('os').update({ [k]: v }).in('id', iguais.map(x => x.id));
+            if (error) CTX.erro('Erro: ' + error.message); else { iguais.forEach(x => { x[k] = v; }); CTX.aviso(`Padronizado em ${iguais.length + 1} OS`); osRender(); }
+          }
+          if (CAT_OS) CAT_OS[base].add(v);
+        }
+        if (['numero', 'ordem_grupo', 'aberta_por', 'data_abertura', 'descricao', 'mantenedor', 'conjunto', 'item', 'problema', 'solucao'].includes(k)) {
+          const foco = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : null;
+          if (CIPS.some(([c]) => c === k)) editOrig.delete(k);
+          desenhar();
+          if (foco) { const f = jan.querySelector(`[data-k="${foco}"]`); if (f) f.focus(); }
+        }
+      }
+    });
+    jan.addEventListener('keydown', async e => {
+      if (e.target.id !== 'osNovoPart' || e.key !== 'Enter') return;
+      e.preventDefault(); const n = txt(e.target.value); if (!n) return;
+      const ps = participantes(o); if (ps.some(p => mesmoNome(p, n))) return;
+      if (await salvarOS(o, { participantes: [...ps, n] })) { desenhar(); const f = jan.querySelector('#osNovoPart'); if (f) f.focus(); }
+    });
+    jan.addEventListener('click', async e => {
+      if (!dona) return;
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.orig) { editOrig.add(b.dataset.orig); desenhar(); const t = jan.querySelector(`textarea[data-k="${b.dataset.orig}"]`); if (t) t.focus(); return; }
+      if (b.hasAttribute('data-feita')) { if (await salvarOS(o, { feitas: norm(o.feitas) === 'SIM' ? 'NÃO' : 'SIM' })) desenhar(); return; }
+      if (b.dataset.part) {
+        const ps = participantes(o), n = b.dataset.part, tem = ps.some(p => mesmoNome(p, n));
+        if (await salvarOS(o, { participantes: tem ? ps.filter(p => !mesmoNome(p, n)) : [...ps, n] })) desenhar();
+        return;
+      }
+      if (b.hasAttribute('data-excluir')) {
+        if (!confirm(`Excluir a OS ${o.numero || ''} ${o.descricao ? '(' + o.descricao.slice(0, 40) + ')' : ''}? Ela continua no último backup.`)) return;
+        const { error } = await sb.from('os').delete().eq('id', o.id);
+        if (error) { CTX.erro('Erro ao excluir: ' + error.message); return; }
+        O.linhas = O.linhas.filter(x => x !== o); CTX.aviso('OS excluída'); fechar(); osRender();
+      }
+    });
+    OS_JAN = { fechar, atualizar: () => { }, o };
+    const p = jan.querySelector('input:not([disabled]),textarea:not([disabled])'); if (p && !o.descricao) p.focus();
+  }
+
   function osIniciar() {
     $('sec-os').innerHTML = osHTML();
-    MGZoom.anexar('oTabela');
-    GO = MGTeclado.grade($('oTabela'), { seletor: 'input[data-k], select[data-k], textarea[data-k]', chaveLinha: tr => tr.dataset.id });
     $('oMant').addEventListener('change', osRender);
     $('oFeitas').addEventListener('change', osRender);
     $('oOrdem').addEventListener('change', () => { ORD.k = $('oOrdem').value; ORD.dir = 1; guardarOrdem(); osRender(); });
     $('oDir').addEventListener('click', () => { ORD.dir = -ORD.dir; guardarOrdem(); osRender(); });
-    $('oTabela').addEventListener('click', e => {
-      const th = e.target.closest('th.o-ord'); if (!th) return;
-      if (ORD.k === th.dataset.ord) ORD.dir = -ORD.dir; else { ORD.k = th.dataset.ord; ORD.dir = 1; }
-      guardarOrdem(); osRender();
+    let tBusca = null;
+    $('oBusca').addEventListener('input', e => { clearTimeout(tBusca); tBusca = setTimeout(() => { OF.busca = e.target.value; osRender(); }, 200); });
+    $('oFiltrosCips').addEventListener('change', e => { const k = e.target.dataset.nivel; if (!k) return; OF[k] = e.target.value; osRender(); });
+    $('oLimparCips').addEventListener('click', () => { CIPS.forEach(([k]) => { OF[k] = ''; }); osRender(); });
+    $('oParetoNivel').addEventListener('change', e => { OF.pareto = e.target.value; osRender(); });
+    $('oParetoLista').addEventListener('click', e => {
+      const b = e.target.closest('.os-par'); if (!b) return;
+      OF[OF.pareto] = OF[OF.pareto] === b.dataset.c ? '' : b.dataset.c; osRender();
     });
     $('oSgBtn').addEventListener('click', () => { $('oSgArq').value = ''; $('oSgArq').click(); });
     $('oSgArq').addEventListener('change', e => { const f = e.target.files[0]; if (f) sgLerArquivo(f); });
@@ -1097,28 +1298,21 @@ window.MGAbas = (function () {
       const { data, error } = await sb.from('os').insert({ posicao: pos, data_abertura: hojeISO() }).select();
       btn.disabled = false;
       if (error) { CTX.erro('Erro ao criar a OS: ' + error.message); return; }
-      O.linhas.push(data[0]); $('oMant').value = ''; $('oFeitas').value = ''; osRender();
-      const sc = $('oTabela').closest('.scroll'); sc.scrollTop = sc.scrollHeight;
+      O.linhas.push(data[0]); osRender(); osAbrir(data[0], btn);
     });
-    $('oTabela').addEventListener('change', async e => {
-      if (!CTX.dona) return;
-      const k = e.target.dataset.k; if (!k) return;
-      const tr = e.target.closest('tr'); const o = O.linhas.find(x => String(x.id) === tr.dataset.id); if (!o) return;
-      let v = e.target.value;
-      v = e.target.type === 'number' ? (v === '' ? null : Number(v)) : txt(v);
-      const { error } = await sb.from('os').update({ [k]: v, atualizado_em: new Date().toISOString() }).eq('id', o.id);
-      if (error) { CTX.erro('Erro ao salvar a OS: ' + error.message); return; }
-      o[k] = v; CTX.aviso('Salvo');
-      if (['conjunto', 'item', 'problema', 'solucao'].includes(k)) { const b = tr.querySelector('td.num b'); if (b) b.textContent = Math.round(MGPlanilha.totalOS(o) * 100) + '%'; }
-      if (['conjunto', 'item', 'problema', 'solucao', 'feitas', 'mantenedor'].includes(k)) osKpis();
+    const lista = $('oLista');
+    lista.addEventListener('click', async e => {
+      const card = e.target.closest('.os-card'); if (!card) return;
+      const o = O.linhas.find(x => String(x.id) === card.dataset.id); if (!o) return;
+      if (e.target.closest('[data-feita]')) {
+        if (CTX.dona) await salvarOS(o, { feitas: norm(o.feitas) === 'SIM' ? 'NÃO' : 'SIM' });
+        return;
+      }
+      osAbrir(o, card);
     });
-    $('oTabela').addEventListener('click', async e => {
-      if (!CTX.dona || !e.target.classList.contains('o-del')) return;
-      const tr = e.target.closest('tr'); const o = O.linhas.find(x => String(x.id) === tr.dataset.id);
-      if (!o || !confirm(`Excluir a OS ${o.numero || ''} ${o.descricao ? '(' + o.descricao.slice(0, 40) + ')' : ''}? Ela continua no último backup.`)) return;
-      const { error } = await sb.from('os').delete().eq('id', o.id);
-      if (error) { CTX.erro('Erro ao excluir: ' + error.message); return; }
-      O.linhas = O.linhas.filter(x => x !== o); CTX.aviso('OS excluída'); osRender();
+    lista.addEventListener('keydown', e => {
+      const card = e.target.closest('.os-card'); if (!card || e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault(); const o = O.linhas.find(x => String(x.id) === card.dataset.id); if (o) osAbrir(o, card);
     });
     osCarregar();
   }
