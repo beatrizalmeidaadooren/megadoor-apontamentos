@@ -1399,6 +1399,9 @@ window.MGAbas = (function () {
     const el = $('oQb'); if (!el) return;
     if (!QB.lista) { el.innerHTML = QB.carregando ? '<div class="card muted">Procurando quebras de máquina nos apontamentos…</div>' : ''; return; }
     const pend = qbPendentes(), dona = CTX.dona;
+    // guarda a rolagem (da lista e da página) para não voltar ao topo depois de uma ação
+    const listaAnt = el.querySelector('.os-qb-lista'), rolLista = listaAnt ? listaAnt.scrollTop : 0, rolPag = window.scrollY;
+    const detAnt = el.querySelector('details.os-qb'), estavaAberto = detAnt ? detAnt.open : null;
     const nIgn = QB.ignor.length;
     const abertas = O.linhas.filter(o => !o.numero && apontsDe(o).length).length;
     el.innerHTML = `<details class="card os-qb" ${pend.length && !QB.verIgn ? 'open' : ''} ${QB.verIgn ? 'open' : ''}>
@@ -1421,6 +1424,10 @@ window.MGAbas = (function () {
               <button class="btn small" type="button" data-qb="ignorar" title="Não precisa de OS">Não precisa</button>`}</div>` : ''}
         </div>`).join('')}</div>` : `<p class="muted">${QB.verIgn ? 'Nenhuma.' : 'Todas as quebras de máquina do período já têm OS.'}</p>`}
     </details>`;
+    const det = el.querySelector('details.os-qb');
+    if (estavaAberto !== null && det) det.open = estavaAberto;
+    const lista = el.querySelector('.os-qb-lista'); if (lista) lista.scrollTop = rolLista;
+    if (Math.abs(window.scrollY - rolPag) > 1) window.scrollTo(0, rolPag);
   }
   async function qbSalvarIgn() {
     const { error } = await sb.from('configuracao').upsert({ chave: 'quebras_sem_os', valor: { ignoradas: QB.ignor } }, { onConflict: 'chave' });
