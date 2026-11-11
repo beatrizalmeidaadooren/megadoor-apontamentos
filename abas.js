@@ -747,6 +747,13 @@ window.MGAbas = (function () {
     const linhas = limpaTxt(com).split('\n').map(l => l.trim()).filter(Boolean);
     return { linhas, cips: linhas.length >= 4 ? { conjunto: linhas[0], item: linhas[1], problema: linhas[2], solucao: linhas[3], observacoes: linhas.slice(4).join('\n') || null } : null };
   }
+  // data e hora do SGMAN ('AAAA-MM-DD HH:MM'), para comparar com o horário das quebras
+  function paraDH(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') { const p = XLSX.SSF.parse_date_code(v); return p ? `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.H)}:${pad(p.M)}` : null; }
+    const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\D+(\d{1,2}):(\d{2}))?/.exec(String(v));
+    return m ? `${m[3]}-${pad(m[2])}-${pad(m[1])} ${pad(m[4] || 0)}:${m[5] || '00'}` : null;
+  }
   async function sgLerArquivo(f) {
     try {
       const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
@@ -763,14 +770,14 @@ window.MGAbas = (function () {
         const com = limpaTxt(g(r, c.com)).trim();
         const p = sgCips(com);
         linhas.push({ num, desc: txt(limpaTxt(g(r, c.desc))), tipo: txt(g(r, c.tipo)) || '', ex: txt(g(r, c.ex)) ? String(g(r, c.ex)).replace(/\s+/g, ' ').trim() : '',
-          prog: paraISO(g(r, c.prog)), st: txt(g(r, c.st)) || '', ini: paraISO(g(r, c.ini)), ter: paraISO(g(r, c.ter)), com, linhasCom: p.linhas, cips: p.cips,
+          progH: paraDH(g(r, c.prog)), iniH: paraDH(g(r, c.ini)), prog: paraISO(g(r, c.prog)), st: txt(g(r, c.st)) || '', ini: paraISO(g(r, c.ini)), ter: paraISO(g(r, c.ter)), com, linhasCom: p.linhas, cips: p.cips,
           pend: g(r, c.pend) == null || g(r, c.pend) === '' ? null : Number(g(r, c.pend)), cil: /\bCIL\b/i.test(String(g(r, c.tipo) || '')) });
       }
       if (!linhas.length) { CTX.erro('O arquivo não tem OS.'); return; }
       SG.linhas = linhas; SG.arquivo = f.name;
       const semCil = linhas.filter(l => !l.cil), nums = linhas.map(l => l.num);
       SG.ultimo = { em: new Date().toISOString(), arquivo: f.name, min: Math.min(...nums), max: Math.max(...nums), os: {} };
-      semCil.forEach(l => { SG.ultimo.os[l.num] = { st: l.st, ex: l.ex, ter: l.ter }; });
+      semCil.forEach(l => { SG.ultimo.os[l.num] = { st: l.st, ex: l.ex, ter: l.ter, ph: l.progH, ih: l.iniH }; });
       await sgSalvarConfig('sgman_ultimo', SG.ultimo);
       sgConferir(); osRender();
       $('oSg').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1367,6 +1374,23 @@ window.MGAbas = (function () {
     const limite = QB.periodo ? new Date(Date.now() - QB.periodo * 864e5).toISOString() : '';
     return QB.lista.filter(e => !ligados.has(e.id) && (QB.verIgn ? ign.has(e.id) : !ign.has(e.id)) && e.inicio >= limite);
   }
+  const dhBR = dh => dh ? dBR(dh.slice(0, 10)).slice(0, 5) + (dh.length > 10 ? ' ' + dh.slice(11, 16) : '') : '';
+  // quando é a OS: início no SGMAN > programada no SGMAN > programada no site > quebra ligada > abertura
+  function osQuando(o) {
+    const s = sgStatus(o) || {}, a = apontsDe(o)[0];
+    if (s.ih) return { ref: s.ih, tx: 'início ' + dhBR(s.ih) };
+    if (s.ph) return { ref: s.ph, tx: 'prog. ' + dhBR(s.ph) };
+    if (o.data) return { ref: o.data, tx: 'prog. ' + dhBR(o.data) };
+    if (a) return { ref: a.data + ' ' + a.hi, tx: 'quebra ' + dhBR(a.data + ' ' + a.hi) };
+    if (o.data_abertura) return { ref: o.data_abertura, tx: 'aberta ' + dhBR(o.data_abertura) };
+    return { ref: '', tx: 'sem data' };
+  }
+  const qbRotulo = o => `${o.numero ? 'OS ' + o.numero : 'sem nº (#' + o.id + ')'} · ${osQuando(o).tx} · ${String(o.descricao || '').replace(/\s+/g, ' ').slice(0, 55)}${txt(o.mantenedor) ? ' · ' + String(o.mantenedor).replace(/\s+/g, ' ').trim() : ''}`;
+  function qbOpcoes(e) {
+    const t = new Date(e.data + 'T' + e.hi + ':00-03:00').getTime();
+    const dist = o => { const r = osQuando(o).ref; if (!r) return 9e15; return Math.abs(new Date(r.slice(0, 10) + 'T' + (r.slice(11, 16) || '12:00') + ':00-03:00').getTime() - t); };
+    return O.linhas.slice().sort((a, b) => dist(a) - dist(b)).map(o => `<option value="${esc(qbRotulo(o))}">`).join('');
+  }
   function qbTexto(e) {
     const ci = [e.conjunto, e.item].filter(Boolean).join(' › ');
     return [ci, e.problema, e.solucao ? 'solução: ' + e.solucao : '', e.obs_operador ? 'operador: ' + e.obs_operador : '', e.minha_obs ? 'sua obs.: ' + e.minha_obs : ''].filter(Boolean).join(' · ');
@@ -1377,8 +1401,6 @@ window.MGAbas = (function () {
     const pend = qbPendentes(), dona = CTX.dona;
     const nIgn = QB.ignor.length;
     const abertas = O.linhas.filter(o => !o.numero && apontsDe(o).length).length;
-    const opcOS = O.linhas.slice().sort((a, b) => String(b.data_abertura || '').localeCompare(String(a.data_abertura || '')) || b.id - a.id)
-      .map(o => `<option value="${o.id}">${o.numero ? 'OS ' + o.numero : 'sem nº'} · ${esc((o.descricao || '').slice(0, 50))}</option>`).join('');
     el.innerHTML = `<details class="card os-qb" ${pend.length && !QB.verIgn ? 'open' : ''} ${QB.verIgn ? 'open' : ''}>
       <summary><b>Quebras de máquina nos apontamentos ${QB.verIgn ? 'marcadas como "não precisa de OS"' : 'sem OS'}</b>
         <span class="pill ${pend.length && !QB.verIgn ? 'pendente' : 'na'}">${nf(pend.length)}</span>
@@ -1395,7 +1417,7 @@ window.MGAbas = (function () {
             <div class="os-qb-tx">${esc(qbTexto(e)) || '<span class="muted">sem descrição no apontamento</span>'}</div></div>
           ${dona ? `<div class="os-qb-ac">${QB.verIgn ? '<button class="btn small" type="button" data-qb="designorar">Voltar para a lista</button>'
             : `<button class="btn small primary" type="button" data-qb="criar">Criar OS</button>
-              <select data-qb="vincular" title="Esta quebra já tem OS"><option value="">Já tem OS…</option>${opcOS}</select>
+              <input data-qb="vincular" list="qbOS-${esc(e.id)}" placeholder="Já tem OS? digite o nº ou a descrição" title="Digite e escolha a OS na lista; as mais próximas da data da quebra aparecem primeiro"><datalist id="qbOS-${esc(e.id)}">${qbOpcoes(e)}</datalist>
               <button class="btn small" type="button" data-qb="ignorar" title="Não precisa de OS">Não precisa</button>`}</div>` : ''}
         </div>`).join('')}</div>` : `<p class="muted">${QB.verIgn ? 'Nenhuma.' : 'Todas as quebras de máquina do período já têm OS.'}</p>`}
     </details>`;
@@ -1415,7 +1437,9 @@ window.MGAbas = (function () {
     if (act === 'ignorar') { QB.ignor = [...new Set([...QB.ignor, ev.id])]; await qbSalvarIgn(); qbRender(); CTX.aviso('Marcada como "não precisa de OS"'); return; }
     if (act === 'designorar') { QB.ignor = QB.ignor.filter(x => x !== ev.id); await qbSalvarIgn(); qbRender(); return; }
     if (act === 'vincular') {
-      const o = O.linhas.find(x => String(x.id) === alvo.value); if (!o) return;
+      const v = alvo.value.trim(); if (!v) return;
+      const o = O.linhas.find(x => qbRotulo(x) === v) || (/^\d+$/.test(v) ? O.linhas.find(x => String(x.numero) === v) : null);
+      if (!o) { CTX.erro('Não achei essa OS. Digite e escolha uma opção da lista.'); return; }
       await salvarOS(o, { apontamentos: [...apontsDe(o), ev] }, `Quebra ligada à ${o.numero ? 'OS ' + o.numero : 'OS sem nº'}`);
       return;
     }
