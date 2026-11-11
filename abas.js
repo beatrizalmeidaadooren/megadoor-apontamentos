@@ -810,21 +810,21 @@ window.MGAbas = (function () {
   const setas = (i, n, ed) => `<button class="btn small mn-mov" data-m="-1" type="button" title="Subir" ${ed || !i ? 'disabled' : ''}>↑</button><button class="btn small mn-mov" data-m="1" type="button" title="Descer" ${ed || i === n - 1 ? 'disabled' : ''}>↓</button>`;
   function menusRender() {
     const ed = CTX.dona ? '' : 'disabled';
-    let h = '<thead><tr><th>Ordem</th><th>Programada</th><th>Pede subgrupo</th><th>Ativa</th></tr></thead><tbody>';
+    let h = '<thead><tr><th>Ordem</th><th>Programada</th><th>Pede subgrupo</th><th>Ativa</th><th></th></tr></thead><tbody>';
     MN.prog.forEach((p, i) => {
       h += `<tr data-k="${esc(p.programada)}"${p.ativo === false ? ' style="opacity:.55"' : ''}><td>${setas(i, MN.prog.length, ed)}</td>
         <td><input class="mn-nome" value="${esc(p.programada)}" ${ed} style="width:240px"></td>
-        <td style="text-align:center">${ck('mn-exige', p.exige_grupo, ed)}</td><td style="text-align:center">${ck('mn-ativo', p.ativo !== false, ed)}</td></tr>`;
+        <td style="text-align:center">${ck('mn-exige', p.exige_grupo, ed)}</td><td style="text-align:center">${ck('mn-ativo', p.ativo !== false, ed)}</td><td>${CTX.dona ? '<button class="btn small mn-del" type="button" title="Excluir do menu">Excluir</button>' : ''}</td></tr>`;
     });
     $('mnProg').innerHTML = h + '</tbody>';
-    h = `<thead><tr><th>Ordem</th><th>Subgrupo do OEE</th><th>Grupo do OEE</th><th>6 Grandes Perdas</th>${CAMPOS.map(c => `<th>${c[1]}</th>`).join('')}<th>Ativo</th></tr></thead><tbody>`;
+    h = `<thead><tr><th>Ordem</th><th>Subgrupo do OEE</th><th>Grupo do OEE</th><th>6 Grandes Perdas</th>${CAMPOS.map(c => `<th>${c[1]}</th>`).join('')}<th>Ativo</th><th></th></tr></thead><tbody>`;
     MN.sub.forEach((s, i) => {
       const op = (lista, v) => `<option value=""></option>` + lista.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('') + (v && !lista.includes(v) ? `<option selected>${esc(v)}</option>` : '');
       h += `<tr data-k="${esc(s.subgrupo)}"${s.ativo === false ? ' style="opacity:.55"' : ''}><td>${setas(i, MN.sub.length, ed)}</td>
         <td><input class="mn-nome" value="${esc(s.subgrupo)}" ${ed} style="width:240px"></td>
         <td><select class="mn-grupo" ${ed}>${op(GRUPOS, s.grupo)}</select></td><td><select class="mn-seis" ${ed}>${op(SEIS, s.seis_perdas)}</select></td>
         ${CAMPOS.map(c => `<td style="text-align:center">${ck('mn-campo', s[c[0]], ed, `data-c="${c[0]}"`)}</td>`).join('')}
-        <td style="text-align:center">${ck('mn-ativo', s.ativo !== false, ed)}</td></tr>`;
+        <td style="text-align:center">${ck('mn-ativo', s.ativo !== false, ed)}</td><td>${CTX.dona ? '<button class="btn small mn-del" type="button" title="Excluir do menu">Excluir</button>' : ''}</td></tr>`;
     });
     $('mnSub').innerHTML = h + '</tbody>';
     $('mnProgAdd').disabled = $('mnSubAdd').disabled = !CTX.dona;
@@ -866,6 +866,17 @@ window.MGAbas = (function () {
   }
   function menusIniciar() {
     $('sec-menus').innerHTML = menusHTML();
+    // excluir do menu: as paradas já classificadas continuam com o nome antigo (só some da lista)
+    const mnExcluir = async (tabela, chave, k) => {
+      const n = await contarClassif(chave, k);
+      const aviso = n ? `\n\n${nf(n)} parada(s) já classificada(s) com "${k}" continuam com esse nome; ele só deixa de aparecer no menu.\nSe quiser só esconder, desmarque "Ativo" em vez de excluir.` : '';
+      if (!confirm(`Excluir "${k}" do menu de ${tabela === 'programadas' ? 'Programadas' : 'Subgrupos'}?${aviso}`)) return;
+      const { error } = await sb.from(tabela).delete().eq(chave, k);
+      if (error) { CTX.erro('Erro ao excluir: ' + error.message); return; }
+      await mnFeito('Excluído');
+    };
+    $('mnProg').addEventListener('click', e => { const d = e.target.closest('.mn-del'); if (d && CTX.dona) mnExcluir('programadas', 'programada', d.closest('tr').dataset.k); });
+    $('mnSub').addEventListener('click', e => { const d = e.target.closest('.mn-del'); if (d && CTX.dona) mnExcluir('subgrupos', 'subgrupo', d.closest('tr').dataset.k); });
     $('mnProg').addEventListener('click', e => {
       const b = e.target.closest('.mn-mov'); if (!b || !CTX.dona) return;
       mnMover(MN.prog, 'programadas', 'programada', b.closest('tr').dataset.k, Number(b.dataset.m));
@@ -955,7 +966,8 @@ window.MGAbas = (function () {
             <input class="ct-nome" value="${esc(c.nome)}" ${ed} style="flex:1;min-width:0">
             ${n < 3 ? `<button class="btn small ct-abrir" type="button" title="Ver os de baixo">›</button>` : ''}
             <button class="btn small ct-mov" data-m="-1" type="button" ${ed || !i ? 'disabled' : ''}>↑</button><button class="btn small ct-mov" data-m="1" type="button" ${ed || i === xs.length - 1 ? 'disabled' : ''}>↓</button>
-            <input type="checkbox" class="ct-ativo" title="Ativo" ${c.ativo !== false ? 'checked' : ''} ${ed}></div>`).join('') : '<p class="muted" style="font-size:12px">Nada cadastrado ainda.</p>')
+            <input type="checkbox" class="ct-ativo" title="Ativo" ${c.ativo !== false ? 'checked' : ''} ${ed}>
+            ${CTX.dona ? '<button class="btn small ct-del" type="button" title="Excluir do menu (e o que estiver abaixo dele)">✕</button>' : ''}</div>`).join('') : '<p class="muted" style="font-size:12px">Nada cadastrado ainda.</p>')
           + (CTX.dona ? `<div style="display:flex;gap:4px;margin-top:6px"><input class="ct-novo" data-n="${n}" placeholder="novo ${rot.toLowerCase()}" style="flex:1;min-width:0"><button class="btn small primary ct-add" data-n="${n}" type="button">+</button></div>` : '');
       return `<div><div style="font-weight:700;margin-bottom:4px">${rot}${n ? ` <span class="muted" style="font-weight:400;font-size:12px">${pronto ? 'de ' + esc(CT.sel[n - 1]) : ''}</span>` : ''}</div>${corpo}</div>`;
     }).join('');
@@ -986,6 +998,15 @@ window.MGAbas = (function () {
       const c = linha(b); if (!c) return;
       const n = nivelN(c);
       if (b.classList.contains('ct-abrir')) { CT.sel[n] = c.nome; for (let j = n + 1; j < 3; j++) CT.sel[j] = ''; catRender(); return; }
+      if (b.classList.contains('ct-del') && CTX.dona) {
+        const caminho = (c.pai ? c.pai + '\t' : '') + c.nome;
+        const abaixo = CT.linhas.filter(x => x.pai === caminho || x.pai.startsWith(caminho + '\t'));
+        if (!confirm(`Excluir "${c.nome}" do menu${abaixo.length ? ` e os ${nf(abaixo.length)} itens abaixo dele (${NIV.slice(n + 1).map(x => x[1].toLowerCase()).join(', ')})` : ''}?\n\nO que já foi escrito nos apontamentos continua como está; só deixa de aparecer como opção. Se quiser só esconder, desmarque a caixinha "Ativo".`)) return;
+        const ids = [c.id, ...abaixo.map(x => x.id)];
+        for (let i = 0; i < ids.length; i += 200) { const r = await sb.from('catalogo').delete().in('id', ids.slice(i, i + 200)); if (r.error) { CTX.erro('Erro ao excluir: ' + r.error.message); return; } }
+        if (CT.sel[n] === c.nome) for (let j = n; j < 3; j++) CT.sel[j] = '';
+        return catFeito('Excluído');
+      }
       if (b.classList.contains('ct-mov') && CTX.dona) {
         const xs = CT.linhas.filter(x => x.nivel === c.nivel && x.pai === c.pai).sort((a, b2) => (a.ordem ?? 1e9) - (b2.ordem ?? 1e9) || a.nome.localeCompare(b2.nome, 'pt'));
         const i = xs.indexOf(c), j = i + Number(b.dataset.m); if (j < 0 || j >= xs.length) return;
