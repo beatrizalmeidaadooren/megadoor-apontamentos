@@ -12,6 +12,7 @@ window.MGFerragens = (function () {
   const somaDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return isoDe(d); };
   const dBR = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
   const DSEM = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+  const dhBR = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
   const diaSem = iso => DSEM[new Date(iso + 'T12:00:00').getDay()];
   let CTX = null;
   const F = { cad: [], dias: [], ev: [], dia: '', busca: '', status: '', tipo: '', sel: new Set(), hDe: '', hAte: '', carregado: false };
@@ -84,6 +85,11 @@ window.MGFerragens = (function () {
     for (const l of linhas) { const m = /(\d{2})\/(\d{2})\/(\d{4})\s*•\s*Plano/.exec(l.tx) || null; if (m) { data = `${m[3]}-${m[2]}-${m[1]}`; break; } }
     if (!data) for (const l of linhas) { const m = /(Segunda|Terça|Quarta|Quinta|Sexta|Sábado|Domingo),?\s+(\d{2})\/(\d{2})\/(\d{4})/i.exec(l.tx); if (m) { data = `${m[4]}-${m[3]}-${m[2]}`; break; } }
     if (!data) throw new Error(`${nome}: não achei a data ("Ferragens do dia · Quarta, 11/11/2026"). Use o PDF "Ferragens do dia" do Plano Mestre.`);
+    let gerado = null;
+    for (const l of linhas) {
+      const m = /Gerado em\s+(\d{2})\/(\d{2})\/(\d{4})\s+(?:às\s+)?(\d{2}):(\d{2})(?::(\d{2}))?/i.exec(l.tx) || /^(\d{2})\/(\d{2})\/(\d{4}),\s*(\d{2}):(\d{2})/.exec(l.tx);
+      if (m) { gerado = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}-03:00`).toISOString(); if (/Gerado/i.test(l.tx)) break; }
+    }
     const itens = []; let lote = '', cliente = '', tipo = '', col = null, resumo = false;
     for (const l of linhas) {
       const t = l.tx;
@@ -120,27 +126,47 @@ window.MGFerragens = (function () {
       itens.push({ codigo, descricao, modelo, fabricante, tipo, qtd, lote, cadastrada });
     }
     if (!itens.length) throw new Error(`${nome}: não achei ferragens no arquivo.`);
-    // junta o mesmo código no dia
-    const por = new Map();
+    return { data, itens, gerado };
+  }
+
+  // lotes guardados como JSON [{lote, qtd}] (dias antigos: texto "LT … | LT …")
+  function lotesDe(d) {
+    if (!d || !d.lotes) return [];
+    try { const v = JSON.parse(d.lotes); if (Array.isArray(v)) return v; } catch (e) { }
+    const xs = String(d.lotes).split(' | ').filter(Boolean);
+    return xs.map((l, i) => ({ lote: l, qtd: i === 0 ? d.qtd : null }));
+  }
+  // junta por código, com a quantidade de cada lote (dentro de um arquivo)
+  function juntar(mapa, itens) {
     for (const it of itens) {
-      const u = por.get(it.codigo);
-      if (u) { u.qtd += it.qtd; if (it.lote && !u.lotes.includes(it.lote)) u.lotes.push(it.lote); }
-      else por.set(it.codigo, { ...it, lotes: it.lote ? [it.lote] : [] });
+      if (!mapa.has(it.codigo)) mapa.set(it.codigo, { meta: it, lotes: new Map() });
+      const m = mapa.get(it.codigo), k = it.lote || '(sem lote)';
+      m.lotes.set(k, (m.lotes.get(k) || 0) + it.qtd);
     }
-    return { data, itens: [...por.values()] };
   }
 
   async function importar(arquivos) {
     const res = [];
     for (const f of arquivos) {
-      try { res.push(interpretar(await linhasPDF(await f.arrayBuffer()), f.name)); }
+      try { const r = interpretar(await linhasPDF(await f.arrayBuffer()), f.name); r.nome = f.name; r.gerado = r.gerado || new Date(f.lastModified).toISOString(); res.push(r); }
       catch (e) { CTX.erro(e.message); return; }
     }
     if (!CTX.dona) { CTX.erro('Só a dona do sistema pode importar.'); return; }
-    let nNovas = 0, nLin = 0;
+    // o mesmo dia em mais de um arquivo: fica o gerado mais recentemente no Plano Mestre
+    const porDia = new Map(), avisos = [];
     for (const r of res) {
+      const u = porDia.get(r.data);
+      if (!u) porDia.set(r.data, r);
+      else { const novo = r.gerado > u.gerado ? r : u, velho = novo === r ? u : r; porDia.set(r.data, novo); avisos.push(`${dBR(r.data)}: usei ${novo.nome} (gerado ${dhBR(novo.gerado)}) e descartei ${velho.nome} (gerado ${dhBR(velho.gerado)})`); }
+    }
+    let nNovas = 0, nLin = 0; const feitos = [];
+    for (const [data, r] of porDia) {
+      const atual = F.dias.filter(d => d.data === data).map(d => d.gerado_em).filter(Boolean).sort().pop();
+      if (atual && new Date(atual) > new Date(r.gerado)) { avisos.push(`${dBR(data)}: o sistema já tem uma versão mais recente (gerada ${dhBR(atual)}); o arquivo ${r.nome} (gerado ${dhBR(r.gerado)}) foi ignorado`); continue; }
+      const mapa = new Map(); juntar(mapa, r.itens);
+      const itens = [...mapa.entries()].map(([codigo, m]) => ({ ...m.meta, codigo, lotes: [...m.lotes.entries()].map(([lote, qtd]) => ({ lote, qtd })) }));
       // cadastro: novas ferragens entram; descrição atualiza se vier preenchida
-      const cad = r.itens.map(it => {
+      const cad = itens.map(it => {
         const ex = F.cad.find(c => c.codigo === it.codigo);
         if (!ex) nNovas++;
         return { codigo: it.codigo, descricao: it.descricao || (ex && ex.descricao) || null, modelo: it.modelo || (ex && ex.modelo) || null,
@@ -148,15 +174,18 @@ window.MGFerragens = (function () {
       });
       let { error } = await sb.from('ferragens').upsert(cad, { onConflict: 'codigo' });
       if (error) { CTX.erro('Erro ao salvar as ferragens: ' + error.message); return; }
-      // o dia é substituído inteiro (o Plano Mestre pode ter mudado desde a última impressão)
-      ({ error } = await sb.from('ferragens_dia').delete().eq('data', r.data));
+      // o dia é substituído inteiro pela versão mais recente do Plano Mestre
+      ({ error } = await sb.from('ferragens_dia').delete().eq('data', data));
       if (error) { CTX.erro('Erro: ' + error.message); return; }
-      ({ error } = await sb.from('ferragens_dia').insert(r.itens.map(it => ({ data: r.data, codigo: it.codigo, qtd: it.qtd, lotes: it.lotes.join(' | ') || null }))));
-      if (error) { CTX.erro('Erro ao salvar o dia ' + dBR(r.data) + ': ' + error.message); return; }
-      nLin += r.itens.length;
+      ({ error } = await sb.from('ferragens_dia').insert(itens.map(it => ({ data, codigo: it.codigo, qtd: it.lotes.reduce((a, l) => a + (l.qtd || 0), 0),
+        lotes: JSON.stringify(it.lotes), gerado_em: r.gerado }))));
+      if (error) { CTX.erro('Erro ao salvar o dia ' + dBR(data) + ': ' + error.message); return; }
+      nLin += itens.length; feitos.push(data);
     }
-    const dias = [...new Set(res.map(r => r.data))].sort();
-    CTX.aviso(`${dias.length} dia(s) importado(s): ${dias.map(dBR).join(', ')} · ${nLin} ferragens${nNovas ? ` · ${nNovas} novas no cadastro` : ''}`);
+    const dias = feitos.sort();
+    CTX.aviso(`${dias.length} dia(s) importado(s)${dias.length ? ': ' + dias.map(dBR).join(', ') : ''} · ${nLin} ferragens${nNovas ? ` · ${nNovas} novas no cadastro` : ''}`);
+    if (avisos.length) alert('Arquivos do mesmo dia:\n\n' + avisos.join('\n'));
+    if (!dias.length) return;
     F.dia = dias[dias.length - 1];
     await carregar();
   }
@@ -243,12 +272,12 @@ window.MGFerragens = (function () {
         <h2 style="margin:0">Ferragens do dia</h2>
         <label class="muted">Dia de produção <select id="fgSelDia">${ds.map(d => `<option value="${d}" ${d === F.dia ? 'selected' : ''}>${diaSem(d)}, ${dBR(d)}${d === somaDias(hoje(), 2) ? ' (daqui a 2 dias)' : d === hoje() ? ' (hoje)' : ''}</option>`).join('')}</select></label>
       </div>
-      <p class="muted" style="margin:6px 0 10px">${itens.length} ferragens · <b style="color:${conferir.length ? 'var(--bad)' : 'var(--good)'}">${conferir.length} para conferir com o Val</b> · ${itens.filter(x => x.rara).length} raras${enviadaEm ? ` · lista enviada ao Val em ${dBR(enviadaEm)}` : ''}</p>
+      <p class="muted" style="margin:6px 0 10px">${itens.length} ferragens · <b style="color:${conferir.length ? 'var(--bad)' : 'var(--good)'}">${conferir.length} para conferir com o Val</b> · ${itens.filter(x => x.rara).length} raras${enviadaEm ? ` · lista enviada ao Val em ${dBR(enviadaEm)}` : ''}${(() => { const g = F.dias.filter(d => d.data === F.dia).map(d => d.gerado_em).filter(Boolean).sort().pop(); return g ? ` · Plano Mestre gerado em ${dhBR(g)}` : ''; })()}</p>
       <div class="fg-lista">${itens.map(({ d, c, e, rara: r, primeira }) => `
         <div class="fg-l fg-${e.st}">
           <div class="fg-cod"><b>${esc(d.codigo)}</b><span class="muted">${esc(c.tipo || '')}</span></div>
           <div class="fg-desc">${esc(c.descricao || '')}${c.fabricante ? ` <span class="muted">· ${esc(c.fabricante)}</span>` : ''}
-            <div class="muted fg-lote" title="${esc((d.lotes || '').split(' | ').join('\n'))}">${d.qtd} un.${d.lotes ? ' · ' + esc(d.lotes.split(' | ').map(x => x.split(' · ')[0]).join(', ')) : ''}</div></div>
+            <div class="muted fg-lote" title="${esc(lotesDe(d).map(l => l.lote + (l.qtd != null ? ' — ' + l.qtd + ' un.' : '')).join('\n'))}">${d.qtd} un.${lotesDe(d).length ? ' · ' + esc(lotesDe(d).map(l => l.lote.split(' · ')[0]).join(', ')) : ''}</div></div>
           <div class="fg-st">${pill(e)}${r ? ' <span class="pill feita" title="Usada em até 2 dias nos últimos 90 dias">rara</span>' : ''}${primeira ? ' <span class="pill feita">1ª vez</span>' : ''}
             ${e.ok ? `<div class="muted fg-lote">último OK: ${dBR(e.ok.data)}${e.ok.por ? ' · ' + esc(e.ok.por) : ''}</div>` : ''}</div>
           ${linhaAcoes(d.codigo)}
